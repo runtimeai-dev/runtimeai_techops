@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Network Policies Enforcement",
+    "tags": ["network", "policies", "security", "zero-trust"],
+    "panels": [
+      {
+        "title": "Policy Violations (Blocked Connections)",
+        "targets": [
+          {
+            "expr": "rate(network_policy_violations_total[5m])",
+            "legendFormat": "Violations/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Allowed Connections by Policy",
+        "targets": [
+          {
+            "expr": "sum(rate(network_policy_allows_total[5m])) by (policy_name)",
+            "legendFormat": "{{ policy_name }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Denied Traffic by Namespace",
+        "targets": [
+          {
+            "expr": "sum(rate(network_policy_denies_total[5m])) by (source_namespace, dest_namespace)",
+            "legendFormat": "{{ source_namespace }} → {{ dest_namespace }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Policy Coverage %",
+        "targets": [
+          {
+            "expr": "100 * count(kube_pod_labels{label_network_policy=\"enforce\"}) / count(kube_pod_info)",
+            "legendFormat": "Coverage %"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

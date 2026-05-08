@@ -1,0 +1,40 @@
+# White-Label Customer Installation Values
+customer_name: "Customer Inc"
+domain: "example.com"
+namespace: default
+
+# TLS Configuration
+tls:
+  enabled: true
+  cert_path: /tmp/tls.crt
+  key_path: /tmp/tls.key
+
+# Database
+postgres:
+  enabled: true
+  storage_class: "default"
+  storage_size: "100Gi"
+  version: "14"
+
+# Redis
+redis:
+  enabled: true
+  storage_class: "default"
+  storage_size: "10Gi"
+
+# Application
+app:
+  replicas: 2
+  image: runtimeaicr.azurecr.io/runtimeai:latest
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Initial admin password (should be changed on first login)
+admin:
+  password_secret: whitelabel-admin-password
+  password_secret_key: password

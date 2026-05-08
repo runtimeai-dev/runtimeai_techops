@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Log Aggregation Overview",
+    "tags": ["logs", "loki", "observability"],
+    "panels": [
+      {
+        "title": "Log Volume by Service",
+        "targets": [
+          {
+            "expr": "sum(increase(loki_log_entries_total[5m])) by (service)",
+            "legendFormat": "{{ service }} logs"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Error Logs Rate",
+        "targets": [
+          {
+            "expr": "sum(rate({level=\"error\"}[5m])) by (service)",
+            "legendFormat": "{{ service }} errors/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Log Indexing Performance",
+        "targets": [
+          {
+            "expr": "rate(loki_ingester_chunks_per_second[5m])",
+            "legendFormat": "chunks/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Loki Storage Usage",
+        "targets": [
+          {
+            "expr": "loki_ingester_memory_chunks / 1024^3",
+            "legendFormat": "Memory (GB)"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

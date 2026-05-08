@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "MCP Gateway Metrics",
+    "tags": ["mcp-gateway", "routing", "performance"],
+    "panels": [
+      {
+        "title": "Gateway Request Volume",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_gateway_requests_total[1m]))",
+            "legendFormat": "Total req/sec"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Route Distribution",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_gateway_requests_total[5m])) by (route)",
+            "legendFormat": "{{ route }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Rate Limiter Status",
+        "targets": [
+          {
+            "expr": "mcp_gateway_rate_limit_hits_total",
+            "legendFormat": "Rate limit hits"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Upstream Service Availability",
+        "targets": [
+          {
+            "expr": "up{job=\"mcp-gateway\"}",
+            "legendFormat": "Gateway availability"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

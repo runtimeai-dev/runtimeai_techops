@@ -1,0 +1,140 @@
+# Grafana Configuration for RuntimeAI TechOps Platform
+# Env: rt19 (staging), rt01/rt02 (production)
+
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: 'RuntimeAI Dashboards'
+        orgId: 1
+        folder: 'TechOps'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 60
+        options:
+          path: /etc/grafana/provisioning/dashboards
+
+# Auth configuration
+auth:
+  anonymous:
+    enabled: false
+  oauth:
+    enabled: true
+    allow_sign_up: false
+    scopes: openid profile email
+    auth_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    api_url: https://www.googleapis.com/oauth2/v1/userinfo
+    client_id: ${GRAFANA_OAUTH_CLIENT_ID}
+    client_secret: ${GRAFANA_OAUTH_CLIENT_SECRET}
+
+# User/org settings
+users:
+  allow_sign_up: false
+  allow_org_create: false
+  auto_assign_org: true
+  auto_assign_org_role: Viewer
+
+# Security settings
+security:
+  admin_user: admin
+  admin_password: ${GRAFANA_ADMIN_PASSWORD}
+  secret_key: ${GRAFANA_SECRET_KEY}
+  disable_gravatar: true
+  cookie_secure: true
+  cookie_samesite: Lax
+
+# SMTP for alerts
+smtp:
+  enabled: true
+  host: smtp.sendgrid.net:587
+  user: apikey
+  password: ${SENDGRID_API_KEY}
+  from_address: alerts@runtimeai.io
+  from_name: RuntimeAI Alerts
+  skip_verify: false
+
+# Alert notification channels
+alerting:
+  enabled: true
+  execute_alerts: true
+  evaluation_timeout_seconds: 300
+  notification_timeout_seconds: 30
+  max_attempts: 2
+  min_interval_seconds: 1
+
+notifiers:
+  - name: PagerDuty Critical
+    type: pagerduty
+    isDefault: false
+    settings:
+      integrationKey: ${PAGERDUTY_INTEGRATION_KEY}
+      severity: critical
+
+  - name: Slack Alerts
+    type: slack
+    settings:
+      url: ${SLACK_WEBHOOK_URL}
+      channel: '#alerts'
+      mentionUsers: '${SLACK_MENTION_USERS}'
+
+  - name: Email Support
+    type: email
+    settings:
+      addresses: alerts@runtimeai.io
+
+# Logging
+log:
+  level: warn
+  format: json
+
+# Paths
+paths:
+  data: /var/lib/grafana
+  logs: /var/log/grafana
+  plugins: /var/lib/grafana/plugins
+  provisioning: /etc/grafana/provisioning
+
+# Server
+server:
+  protocol: http
+  http_port: 3000
+  domain: ${GRAFANA_DOMAIN}
+  root_url: https://%(domain)s/grafana
+  serve_from_sub_path: true
+  enable_gzip: true
+
+# Database
+database:
+  type: postgres
+  host: ${POSTGRES_HOST}
+  port: 5432
+  name: grafana
+  user: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  max_open_conn: 10
+  max_idle_conn: 2
+  log_queries: false
+
+# Feature toggles
+feature_toggles:
+  newPanelChromeUI: true
+  publicDashboards: false
+  alertingSimplifiedRouting: false

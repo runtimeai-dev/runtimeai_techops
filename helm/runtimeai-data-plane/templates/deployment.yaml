@@ -1,0 +1,90 @@
+{{- range $service, $config := .Values | dict "cost_ledger" .Values.cost_ledger "drift_engine" .Values.drift_engine "waf" .Values.waf }}
+{{- if $config.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $service }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $service }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    release: {{ $.Release.Name }}
+    heritage: {{ $.Release.Service }}
+spec:
+  replicas: {{ $config.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $service }}
+      release: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $service }}
+        release: {{ $.Release.Name }}
+    spec:
+      serviceAccountName: {{ $service }}-sa
+      containers:
+      - name: {{ $service }}
+        image: {{ $config.image }}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: {{ $config.port }}
+          protocol: TCP
+        env:
+        {{- range $key, $value := $config.env }}
+        - name: {{ $key }}
+          value: "{{ $value }}"
+        {{- end }}
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: database-url
+        {{- if $.Values.quantumvault.enabled }}
+        - name: QUANTUMVAULT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.Values.quantumvault.api_key_secret }}
+              key: {{ $.Values.quantumvault.api_key_secret_key }}
+        - name: QUANTUMVAULT_ENDPOINT
+          value: "{{ $.Values.quantumvault.endpoint }}"
+        {{- end }}
+        resources:
+          requests:
+            cpu: {{ $config.resources.requests.cpu }}
+            memory: {{ $config.resources.requests.memory }}
+          limits:
+            cpu: {{ $config.resources.limits.cpu }}
+            memory: {{ $config.resources.limits.memory }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      {{- if $.Values.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq $.Values.podAntiAffinity.rule "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          {{- end }}
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ $service }}
+            topologyKey: kubernetes.io/hostname
+      {{- end }}
+---
+{{- end }}
+{{- end }}

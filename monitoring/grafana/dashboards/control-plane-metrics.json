@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "title": "Control Plane Metrics",
+    "tags": ["control-plane", "dashboard", "performance"],
+    "panels": [
+      {
+        "title": "API Latency (p50/p95/p99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(control_plane_http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(control_plane_http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(control_plane_http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Request Rate by Method",
+        "targets": [
+          {
+            "expr": "sum(rate(control_plane_http_requests_total[1m])) by (method)",
+            "legendFormat": "{{ method }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Error Rate (5xx)",
+        "targets": [
+          {
+            "expr": "rate(control_plane_http_requests_total{status=~\"5..\"}[5m])",
+            "legendFormat": "Errors/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Dashboard Session Count",
+        "targets": [
+          {
+            "expr": "dashboard_active_sessions_total",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

@@ -1,0 +1,127 @@
+# TLS/HTTPS — TOPS-033
+# cert-manager for automatic certificate generation and renewal
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+
+---
+# Install cert-manager via Helm
+# helm repo add jetstack https://charts.jetstack.io
+# helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace \
+#   --set installCRDs=true --set global.leaderElection.namespace=cert-manager
+
+# ClusterIssuer for Let's Encrypt (production)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  namespace: cert-manager
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@runtimeai.io
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+---
+# ClusterIssuer for Let's Encrypt (staging, for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  namespace: cert-manager
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@runtimeai.io
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+---
+# Certificate for rt19 staging environment
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: app-rt19-tls
+  namespace: rt19
+spec:
+  secretName: app-rt19-tls
+  duration: 2160h
+  renewBefore: 720h
+  commonName: app.rt19.runtimeai.io
+  dnsNames:
+    - app.rt19.runtimeai.io
+    - api.rt19.runtimeai.io
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+
+---
+# Certificate for production
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: app-prod-tls
+  namespace: rt01
+spec:
+  secretName: app-prod-tls
+  duration: 2160h
+  renewBefore: 720h
+  commonName: app.runtimeai.io
+  dnsNames:
+    - app.runtimeai.io
+    - api.runtimeai.io
+    - "*.runtimeai.io"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+
+---
+# Ingress with automatic TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: rt19
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.rt19.runtimeai.io
+        - api.rt19.runtimeai.io
+      secretName: app-rt19-tls
+  rules:
+    - host: app.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 4000
+    - host: api.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: control-plane
+                port:
+                  number: 8080

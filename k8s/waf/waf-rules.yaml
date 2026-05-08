@@ -1,0 +1,31 @@
+# WAF Rules (OWASP Top 10) — TOPS-035
+
+# SQL Injection Detection
+SecRule ARGS "@detectSQLi" "id:1001,phase:2,deny,msg:'SQL Injection Attack'"
+
+# XSS Detection
+SecRule ARGS "@detectXSS" "id:1002,phase:2,deny,msg:'XSS Attack Detected'"
+
+# Broken Authentication
+SecRule REQUEST_HEADERS:Authorization "!@rx /^Bearer [a-zA-Z0-9._-]+$/" "id:1003,phase:1,deny,msg:'Invalid JWT'"
+
+# Tenant Isolation
+SecRule ARGS:tenant_id "!@eq %{TX.current_tenant}" "id:1004,phase:2,deny,msg:'Tenant isolation bypass'"
+
+# Rate Limiting per IP
+SecRule IP:requests_per_second "@gt 1000" "id:1005,phase:1,deny,msg:'Request rate limit exceeded'"
+
+# DDoS Pattern Detection
+SecRule REQUEST_HEADERS:User-Agent "@rx /bot|crawler|scanner/" "id:1006,phase:1,deny,msg:'Bot/crawler detected'"
+
+# QuantumVault Protection
+SecRule REQUEST_URI "@contains /qv/" "chain|id:1007,phase:1,deny,msg:'QuantumVault access'"
+  SecRule REQUEST_HEADERS:Authorization "!@rx /^Bearer /" "deny"
+
+# Cost Ledger Financial Fraud Prevention
+SecRule REQUEST_METHOD "@rx /^(DELETE|PUT)/" "chain|id:1008,phase:1,deny,msg:'Destructive op on cost-ledger'"
+  SecRule REQUEST_URI "@contains /cost-ledger/" "deny"
+
+# Exceptions
+SecRule REQUEST_URI "@contains /health" "id:2001,phase:1,allow,msg:'Health check bypass'"
+SecRule REQUEST_URI "@contains /metrics" "id:2002,phase:1,allow,msg:'Metrics endpoint bypass'"

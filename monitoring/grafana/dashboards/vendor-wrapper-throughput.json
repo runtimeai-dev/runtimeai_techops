@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Vendor Wrapper Throughput",
+    "tags": ["vendor-wrapper", "llm", "ai", "throughput"],
+    "panels": [
+      {
+        "title": "LLM Request Rate by Provider",
+        "targets": [
+          {
+            "expr": "sum(rate(vendor_wrapper_requests_total[1m])) by (provider)",
+            "legendFormat": "{{ provider }} req/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Token Usage (in/out)",
+        "targets": [
+          {
+            "expr": "rate(vendor_wrapper_tokens_used_total[5m])",
+            "legendFormat": "Tokens/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Provider Latency (p95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(vendor_wrapper_request_duration_seconds_bucket[5m])) by (provider)",
+            "legendFormat": "{{ provider }} latency"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Provider Error Rate",
+        "targets": [
+          {
+            "expr": "sum(rate(vendor_wrapper_errors_total[5m])) by (provider)",
+            "legendFormat": "{{ provider }} errors/sec"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

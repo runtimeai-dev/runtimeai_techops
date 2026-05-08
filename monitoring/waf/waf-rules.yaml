@@ -1,0 +1,41 @@
+# WAF Rules — OWASP Top 10 + RuntimeAI Custom Protections
+# Deployed to Envoy + K8s NetworkPolicies
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-rules
+  namespace: rt19
+data:
+  sql_injection_patterns: |
+    rule_1: "pattern: (union|select|insert|update|delete|drop|exec|script).*(?:from|where|join)"
+    rule_2: "pattern: (\\bOR\\b|\\bAND\\b).*=.*"
+
+  xss_patterns: |
+    rule_1: "pattern: <script|javascript:|onerror=|onclick="
+    rule_2: "pattern: svg.*onload|img.*onerror|iframe.*src"
+
+  auth_bypass_patterns: |
+    rule_1: "pattern: (admin|root|superuser).*password"
+    rule_2: "pattern: authorization.*bypass|auth.*skip|role.*elevation"
+
+  path_traversal_patterns: |
+    rule_1: "pattern: \\.\\./|\\.\\.\\\\\\\\"
+    rule_2: "pattern: encoded.*\\.\\./"
+
+  xxe_patterns: |
+    rule_1: "pattern: <!ENTITY.*SYSTEM|<!DOCTYPE.*\\[|xxx:xxe"
+
+  rate_limiting: |
+    public_endpoints: "1000 requests per minute per IP"
+    admin_endpoints: "100 requests per minute per IP"
+    api_endpoints: "500 requests per minute per IP"
+
+  geo_blocking: |
+    blocked_countries: "KP,IR,SY,CU"
+    reason: "OFAC and sanctions list"
+
+  tenant_isolation: |
+    rule_1: "pattern: tenant_id=|tenant_isolation|rls.*bypass"
+    action: block
+    severity: critical

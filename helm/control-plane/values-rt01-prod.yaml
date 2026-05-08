@@ -1,0 +1,34 @@
+# Control Plane Production Values (rt01)
+namespace: rt19
+environment: production
+replicas: 3
+
+image:
+  tag: latest  # Set specific version in prod
+
+resources:
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+affinity:
+  podAntiAffinity: hard  # Enforce spreading
+
+pdb:
+  enabled: true
+  minAvailable: 2  # Allow 1 disruption out of 3+
+
+# Production-grade settings
+env:
+  LOG_LEVEL: warn
+  ENABLE_METRICS: "true"
+  ENABLE_TRACING: "true"

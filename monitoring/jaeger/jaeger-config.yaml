@@ -1,0 +1,27 @@
+# Distributed Tracing (Jaeger) — TOPS-044
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-configuration
+  namespace: rt19
+data:
+  sampling.json: |
+    {
+      "default_strategy": {
+        "type": "probabilistic",
+        "param": 0.1
+      },
+      "service_strategies": [
+        {
+          "service": "control-plane",
+          "type": "probabilistic",
+          "param": 0.5
+        },
+        {
+          "service": "cost-ledger",
+          "type": "probabilistic",
+          "param": 0.2
+        }
+      ]
+    }

@@ -1,0 +1,46 @@
+# Cost Monitoring & Chargeback (per-tenant usage) — TOPS-042
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cost-monitoring-config
+  namespace: rt19
+data:
+  cost-config.yaml: |
+    # Resource pricing
+    pricing:
+      compute:
+        pod_per_hour: 0.10  # USD
+        memory_per_gb_hour: 0.015
+        cpu_per_core_hour: 0.05
+      storage:
+        pvc_per_gb_month: 0.10
+        s3_per_gb_month: 0.023
+      network:
+        egress_per_gb: 0.09
+        api_call_per_million: 0.50
+      
+    # Cost allocation
+    chargeback:
+      by_tenant: true
+      by_service: true
+      by_namespace: true
+      
+    # Reporting
+    reports:
+      daily: true
+      weekly: true
+      monthly: true
+      email: billing@runtimeai.io
+
+    # Budget alerts
+    budgets:
+      rt19:
+        monthly_limit_usd: 10000
+        alert_threshold: 0.80  # Alert at 80%
+      pqdata:
+        monthly_limit_usd: 5000
+        alert_threshold: 0.80
+      runtimecrm:
+        monthly_limit_usd: 2000
+        alert_threshold: 0.80

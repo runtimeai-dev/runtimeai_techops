@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Pod Resource Utilization",
+    "tags": ["pods", "resources", "performance"],
+    "panels": [
+      {
+        "title": "CPU Throttling",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0",
+            "legendFormat": "{{ pod_name }} throttled"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Memory OOM Risk",
+        "targets": [
+          {
+            "expr": "container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9",
+            "legendFormat": "{{ pod_name }} > 90%"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Disk I/O Operations",
+        "targets": [
+          {
+            "expr": "sum(rate(container_fs_io_current{operation=\"read\"}[5m])) by (pod_name)",
+            "legendFormat": "{{ pod_name }} I/O ops/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Pod Restart Count",
+        "targets": [
+          {
+            "expr": "kube_pod_container_status_restarts_total > 0",
+            "legendFormat": "{{ pod_name }}: {{ restarts }} restarts"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{{- range $service, $config := .Values | dict "cost_ledger" .Values.cost_ledger "drift_engine" .Values.drift_engine "waf" .Values.waf }}
+{{- if $config.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $service }}
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+  - port: {{ $.Values.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $service }}
+    release: {{ $.Release.Name }}
+---
+{{- end }}
+{{- end }}
