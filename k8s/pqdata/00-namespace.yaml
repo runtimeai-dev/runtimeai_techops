@@ -1,0 +1,113 @@
+# =============================================================================
+# Qutonomous Security Platform — Namespace & Node Pool Configuration
+# Deployed to Azure AKS (rt19) alongside RuntimeAI Enterprise
+#
+# DESIGN DECISIONS:
+#   - Dedicated `pqdata` namespace for service isolation
+#   - Dedicated node pool with taints (workloads don't mix with RuntimeAI)
+#   - Self-signed PQC TLS for internal service-to-service comms
+#   - Dedicated PostgreSQL instance (separate from RuntimeAI)
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: qutonomous
+  labels:
+    app.kubernetes.io/part-of: qutonomous-security-platform
+    app.kubernetes.io/managed-by: qutonomous-deploy
+    qutonomous.io/tier: production
+  annotations:
+    qutonomous.io/description: "Post-Quantum Data Security Platform — production namespace"
+
+---
+
+# ResourceQuota — enforce namespace-level resource limits
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: qutonomous-quota
+  namespace: qutonomous
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "4Gi"
+    limits.cpu: "8"
+    limits.memory: "8Gi"
+    pods: "30"
+    services: "15"
+    persistentvolumeclaims: "5"
+
+---
+
+# LimitRange — enforce per-pod defaults
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: qutonomous-limits
+  namespace: qutonomous
+spec:
+  limits:
+    - default:
+        cpu: "256m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      type: Container
+
+---
+
+# NetworkPolicy — deny all ingress by default, allow only within pqdata namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: qutonomous
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+
+# NetworkPolicy — allow intra-namespace communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-qutonomous-internal
+  namespace: qutonomous
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: qutonomous
+
+---
+
+# NetworkPolicy — allow ingress controller traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: qutonomous
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: runtimeai

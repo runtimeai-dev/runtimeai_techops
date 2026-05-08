@@ -1,0 +1,37 @@
+# PodDisruptionBudgets — protect against single-node drains taking out
+# every replica simultaneously. AKS node patching, voluntary cordons, and
+# cluster autoscaler all respect PDB. Without these, a `kubectl drain
+# <node>` on a heavily-packed node could 0-replicate runtimecrm.
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: arh-pdb
+  namespace: runtimecrm
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: arh
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: console-pdb
+  namespace: runtimecrm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: console
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: landing-pdb
+  namespace: runtimecrm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: landing

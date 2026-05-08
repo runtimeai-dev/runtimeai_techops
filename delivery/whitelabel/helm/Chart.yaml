@@ -1,0 +1,10 @@
+apiVersion: v2
+name: runtimeai-whitelabel
+description: RuntimeAI white-label CP+DP+MCP gateway (Model B on-prem, scoped bundle)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords: [whitelabel, ai-governance, mcp]
+maintainers:
+  - name: RuntimeAI
+    email: support@runtimeai.io

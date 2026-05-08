@@ -1,0 +1,133 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pii-shield
+  namespace: aep
+  labels:
+    app: pii-shield
+    service: pii-shield
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8304
+    targetPort: 8304
+    protocol: TCP
+    name: http
+  selector:
+    app: pii-shield
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pii-shield
+  namespace: aep
+  labels:
+    app: pii-shield
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pii-shield
+  template:
+    metadata:
+      labels:
+        app: pii-shield
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: pii-shield
+        image: runtimeaicr.azurecr.io/aep/pii-shield:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8304
+          name: http
+        env:
+        - name: PORT
+          value: "8304"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: QUANTUMVAULT_URL
+          value: "http://quantumvault.pqdata.svc.cluster.local:8200"
+        - name: QUANTUMVAULT_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: qv-jwt-secret
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8304
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8304
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - pii-shield
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pii-shield-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pii-shield
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

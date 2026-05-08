@@ -1,0 +1,183 @@
+# OPER_RT19-062: Gateway namespace — nginx+lua JWT pod routing
+# Sits behind Azure Front Door. Reads the JWT `pod` claim (base64 decode, no sig verify)
+# to route requests to the correct rt01 or rt02 pod.
+# Guest signing uses consistent hash by token for cache locality.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-gateway-config
+  namespace: gateway
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /dev/stderr warn;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      lua_package_path '/etc/nginx/lua/?.lua;;';
+
+      # Use CoreDNS for runtime upstream resolution (avoids startup DNS failures)
+      resolver 172.16.0.10 valid=30s ipv6=off;
+
+      server {
+        listen 8080;
+        server_name quantosign.com www.quantosign.com _;
+
+        # Redirect www to apex
+        if ($host = 'www.quantosign.com') {
+          return 301 https://quantosign.com$request_uri;
+        }
+
+        # Redirect old esign.runtimeai.io domain
+        if ($host = 'esign.runtimeai.io') {
+          return 301 https://quantosign.com$request_uri;
+        }
+
+        # Health check for Azure Front Door origin probe
+        location = /healthz {
+          access_log off;
+          return 200 '{"status":"ok"}';
+          add_header Content-Type application/json;
+        }
+
+        # Guest signing — serve React SPA (esign-landing), not the API backend.
+        # The SPA renders GuestSigningPage and calls /api/v1/sign/guest/<token> itself.
+        location ~ ^/sign/ {
+          set $upstream "esign-landing.rt01.svc.cluster.local:3001";
+          proxy_pass http://$upstream;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~ ^/api/v1/sign/guest/ {
+          set $upstream "esign-service.rt01.svc.cluster.local:8096";
+          access_by_lua_block {
+            local uri = ngx.var.request_uri
+            local h = 0
+            for i = 1, #uri do h = (h * 31 + uri:byte(i)) % 2 end
+            if h == 1 then ngx.var.upstream = "esign-service.rt02.svc.cluster.local:8096" end
+          }
+          proxy_pass http://$upstream;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # Auth verify — use rt01 (tenantID unknown until JWT issued)
+        location = /api/v1/sign/auth/verify {
+          set $upstream "esign-service.rt01.svc.cluster.local:8096";
+          proxy_pass http://$upstream;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # All other API requests — route by JWT `pod` claim
+        location /api/ {
+          # Decode pod claim from JWT payload (Lua, base64url, no sig verify).
+          # Gateway does routing only — esign-service still verifies the full JWT.
+          set $upstream "esign-service.rt01.svc.cluster.local:8096";
+
+          access_by_lua_block {
+            local auth_header = ngx.var.http_authorization
+            if auth_header then
+              local payload_b64 = auth_header:match("^Bearer%s+[^%.]+%.([^%.]+)%.")
+              if payload_b64 then
+                local b64 = payload_b64:gsub("%-", "+"):gsub("_", "/")
+                local pad = (4 - #b64 % 4) % 4
+                b64 = b64 .. string.rep("=", pad)
+                local decoded = ngx.decode_base64(b64)
+                if decoded then
+                  local ok, claims = pcall(require("cjson").decode, decoded)
+                  if ok and claims and claims.pod == "rt02" then
+                    ngx.var.upstream = "esign-service.rt02.svc.cluster.local:8096"
+                  end
+                end
+              end
+            end
+          }
+
+          proxy_pass http://$upstream;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Static frontend (esign-landing React app in rt01 namespace)
+        location / {
+          set $upstream "esign-landing.rt01.svc.cluster.local:3001";
+          proxy_pass http://$upstream;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-gateway
+  namespace: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: esign-gateway
+  template:
+    metadata:
+      labels:
+        app: esign-gateway
+    spec:
+      containers:
+        - name: nginx
+          # openresty includes LuaJIT + ngx_http_lua_module
+          image: openresty/openresty:1.25.3.2-alpine
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-gateway-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-gateway
+  namespace: gateway
+spec:
+  selector:
+    app: esign-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer  # Azure Front Door connects here; or use internal LB + AFD custom origin

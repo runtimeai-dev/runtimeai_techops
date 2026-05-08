@@ -1,0 +1,64 @@
+name: Release — RuntimeAI
+
+on:
+  # ── Manual trigger only (cost containment) ──────────────────────────
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0). Leave empty for latest commit.'
+        required: false
+        type: string
+  # ── Original auto-triggers (disabled to save CI costs) ──────────────
+  # push:
+  #   tags:
+  #     - 'v*'
+
+jobs:
+  build-push-all:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - {name: auth-service, context: auth-service}
+          - {name: saas-admin, context: SaaSAdminApp}
+          # landing-frontend is DEPRECATED — use runtimeai-landing instead
+          # - {name: landing-frontend, context: landing-frontend}
+          - {name: runtimeai-landing, context: runtimeai-landing}
+          - {name: landing-backend, context: landing-backend}
+          - {name: mcp-gateway, context: mcp_gateway/mcp-gateway}
+          - {name: ai-finops-service, context: ai_finops/ai-finops-service}
+          - {name: aaic-service, context: auto_ai_compliance/aaic-service}
+          - {name: marketplace-service, context: agent_marketplace/marketplace-service}
+          - {name: billing-service, context: billing-service}
+          - {name: esign-service, context: esign-service/esign-service}
+          - {name: esign-landing, context: esign-landing}
+          - {name: auditor-dashboard, context: auto_ai_compliance/auditor-dashboard}
+          - {name: mcp-server-okta, context: mcp_gateway/mcp-servers/mcp-server-okta}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service.context }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/runtimeai-${{ matrix.service.name }}:latest
+            ghcr.io/${{ github.repository_owner }}/runtimeai-${{ matrix.service.name }}:${{ github.ref_name }}
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: build-push-all
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true

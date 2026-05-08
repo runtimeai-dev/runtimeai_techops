@@ -1,0 +1,59 @@
+# NetworkPolicy: lock down each AEP product service so only aep-gateway can
+# reach it. kube-system pods (DNS) and kube-prometheus (scrape) are also
+# allowed. Per OPER_RT19-096 §3.B.B1.
+#
+# Apply this AFTER aep-gateway is verified working, otherwise a misconfigured
+# gateway will lock the cluster out of every product service simultaneously.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-products-gateway-only
+  namespace: aep
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - kya
+          - cost-control
+          - audit-black-box
+          - pii-shield
+          - observability
+          - fraud-shield
+          - memory-vault
+          - commerce-rails
+          - commerce-protocol
+          - marketplace
+          - developer-hub
+          - contract-manager
+          - procurement-hub
+          - finance-rail
+          - agent-builder-factory
+  policyTypes:
+    - Ingress
+  ingress:
+    # gateway is the primary allowed caller
+    - from:
+        - podSelector:
+            matchLabels:
+              app: aep-gateway
+    # auth-service may need to call product /healthz on startup
+    - from:
+        - podSelector:
+            matchLabels:
+              app: aep-auth-service
+    # kube-prometheus scrape (matches the standard label used by the
+    # rt19 prometheus stack)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    # cluster-internal services that legitimately call into aep (e.g.
+    # cross-namespace integrations from rt19 mcp-gateway). Allow rt19 ns
+    # for now and tighten in a follow-up.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt19

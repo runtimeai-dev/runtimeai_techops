@@ -1,0 +1,109 @@
+{{/* Control Plane Deployment */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: control-plane
+spec:
+  replicas: {{ .Values.controlPlane.replicas }}
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: control-plane
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "control-plane" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.controlPlane.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: RUNTIMEAI_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: ADMIN_SECRET
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: REDIS_URL
+            - name: OTEL_SDK_DISABLED
+              value: {{ .Values.controlPlane.env.otelDisabled | quote }}
+            - name: ESIGN_SERVICE_URL
+              value: "http://esign-service:{{ .Values.esignService.port }}"
+            - name: FINOPS_SERVICE_URL
+              value: "http://ai-finops-service:{{ .Values.aiFinops.port }}"
+            - name: AAIC_SERVICE_URL
+              value: "http://aaic-service:{{ .Values.aaicService.port }}"
+            - name: DISCOVERY_URL
+              value: "http://discovery:{{ .Values.discovery.port }}"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:{{ .Values.authService.port }}"
+            - name: PORT
+              value: {{ .Values.controlPlane.port | quote }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ include "runtimeai.corsOrigins" . | quote }}
+            - name: WEBAUTHN_RPID
+              value: {{ .Values.global.cookieDomain | quote }}
+            - name: WEBAUTHN_RP_ORIGINS
+              value: "https://{{ include "runtimeai.appDomain" . }},https://{{ include "runtimeai.saasDomain" . }}"
+            - name: COOKIE_DOMAIN
+              value: {{ .Values.global.cookieDomain | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.controlPlane.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.controlPlane.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: control-plane
+  ports:
+    - port: {{ .Values.controlPlane.port }}
+      targetPort: {{ .Values.controlPlane.port }}
+  type: ClusterIP

@@ -1,0 +1,99 @@
+# =============================================================================
+# Qutonomous Security Platform — Dedicated PostgreSQL 16
+# Provides isolated persistence for the 5 stateful cryptographic services.
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qutonomous-postgres-pvc
+  namespace: qutonomous
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qutonomous-postgres
+  namespace: qutonomous
+spec:
+  serviceName: qutonomous-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qutonomous-postgres
+  template:
+    metadata:
+      labels:
+        app: qutonomous-postgres
+    spec:
+      tolerations:
+        - key: "pqdata"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      nodeSelector:
+        agentpool: pqdata
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          envFrom:
+            - secretRef:
+                name: qutonomous-db-secrets
+          env:
+            # Important: set PGDATA to subfolder to avoid lost+found permission issues
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "qutonomous", "-d", "qutonomous"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "qutonomous", "-d", "qutonomous"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: qutonomous-postgres-pvc
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: qutonomous-postgres
+  namespace: qutonomous
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: qutonomous-postgres
+  clusterIP: None # Headless service for StatefulSet

@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketplace
+  namespace: aep
+  labels:
+    app: marketplace
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: marketplace
+  template:
+    metadata:
+      labels:
+        app: marketplace
+    spec:
+      containers:
+        - name: marketplace
+          image: runtimeaicr.azurecr.io/aep/marketplace:latest
+          ports:
+            - containerPort: 8310
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8310"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8310
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8310
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: acr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketplace
+  namespace: aep
+spec:
+  selector:
+    app: marketplace
+  ports:
+    - port: 8310
+      targetPort: 8310
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: marketplace-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: marketplace
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: marketplace-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: marketplace

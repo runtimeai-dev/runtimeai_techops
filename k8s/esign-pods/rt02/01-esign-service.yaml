@@ -1,0 +1,173 @@
+# OPER_RT19-062: rt02 pod — esign-service (QUANTUM-native)
+# All PQDP env vars explicit. ESIGN_CRYPTO_MODE=QUANTUM enables post-quantum paths.
+# DATABASE_URL points to PgBouncer (not direct postgres).
+# REDIS_URL points to shared Redis master (no pod prefix in session keys).
+# QUANTUMVAULT_URL uses HTTPS (QV_TLS_ENABLED=true on QuantumVault side).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-service
+  namespace: rt02
+  labels:
+    app: esign-service
+    esign.runtimeai.io/pod: rt02
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: esign-service
+  template:
+    metadata:
+      labels:
+        app: esign-service
+        esign.runtimeai.io/pod: rt02
+    spec:
+      containers:
+        - name: esign-service
+          image: runtimeaicr.azurecr.io/esign-service:latest
+          ports:
+            - containerPort: 8096
+              name: http
+          env:
+            # ── Service identity ──────────────────────────────────────────
+            - name: PORT
+              value: "8096"
+            - name: LOG_LEVEL
+              value: info
+
+            # ── PQDP: post-quantum mode ───────────────────────────────────
+            - name: ESIGN_CRYPTO_MODE
+              value: QUANTUM
+            - name: POD_ID
+              value: rt02
+            - name: ACTIVE_PODS
+              value: rt01,rt02
+
+            # ── PQDP: QuantumVault (HTTPS — TLS enabled) ──────────────────
+            - name: QUANTUMVAULT_URL
+              value: http://quantumvault.pqdata.svc.cluster.local:8200
+            - name: QUANTUMVAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: quantumvault-token
+            - name: QUANTUMVAULT_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: quantumvault-jwt-secret
+            - name: PQDP_TENANT_ID
+              value: esign-platform
+            - name: PQDP_DOC_ENC_KEY_REF
+              value: esign-platform/shared/doc-enc-key
+            - name: PQDP_SIGN_KEY_REF
+              value: esign-platform/rt02/tenant-signing-key
+
+            # ── PQDP: PQ Sign (HTTPS via TLS sidecar in pq-sign pod) ──────
+            - name: PQ_SIGN_URL
+              value: http://pq-sign.pqdata.svc.cluster.local:8087
+
+            # ── PQDP: PQ Policy Engine ────────────────────────────────────
+            - name: PQ_POLICY_URL
+              value: http://pq-policy-engine.pqdata.svc.cluster.local:8083
+
+            # ── Database (PgBouncer — shared across all pods) ─────────────
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: database-url  # postgres://esign_app:pass@pgbouncer.shared-data:5432/authzion
+
+            # ── Redis (shared, session keys without pod prefix) ───────────
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: redis-url  # redis://:pass@redis-master.shared-data:6379/0
+
+            # ── JWT (bootstrapped from QuantumVault at startup) ───────────
+            # JWT_SECRET is loaded from esign-platform/shared/jwt-secret via BootstrapSecrets.
+            # Do not set here; BootstrapSecrets will set it if not already in env.
+
+            # ── Storage: Azure Blob ───────────────────────────────────────
+            - name: STORAGE_BACKEND
+              value: azure
+            - name: AZURE_STORAGE_ACCOUNT
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: azure-storage-account
+            - name: AZURE_STORAGE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: azure-storage-key
+            - name: AZURE_STORAGE_CONTAINER
+              value: esign-documents
+
+            # ── Storage signing key ────────────────────────────────────────
+            - name: STORAGE_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: storage-signing-secret
+
+            # ── Multi-pod admin ────────────────────────────────────────────
+            - name: ESIGN_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: esign-admin-secret
+
+            # ── Email (SendGrid) ──────────────────────────────────────────
+            - name: EMAIL_PROVIDER
+              value: sendgrid
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: sendgrid-api-key
+            - name: SENDGRID_FROM_EMAIL
+              value: noreply@quantosign.com
+            - name: EMAIL_FROM
+              value: noreply@quantosign.com
+            - name: EMAIL_FROM_NAME
+              value: QuantoSign
+
+            # ── Base URL ───────────────────────────────────────────────────
+            - name: ESIGN_BASE_URL
+              value: https://quantosign.com
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8096
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8096
+            initialDelaySeconds: 120
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-service
+  namespace: rt02
+spec:
+  selector:
+    app: esign-service
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096

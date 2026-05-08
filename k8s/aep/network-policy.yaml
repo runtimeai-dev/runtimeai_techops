@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-default-deny
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow intra-AEP service communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-intra-service
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: runtimeai-aep
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: aep
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt19
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: aep
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt19
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pqdata
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow external HTTPS (Stripe, Azure, OpenAI)
+    - ports:
+        - port: 443
+          protocol: TCP

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commerce-protocol
+  namespace: aep
+  labels:
+    app: commerce-protocol
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: commerce-protocol
+  template:
+    metadata:
+      labels:
+        app: commerce-protocol
+    spec:
+      containers:
+        - name: commerce-protocol
+          image: runtimeaicr.azurecr.io/aep/commerce-protocol:latest
+          ports:
+            - containerPort: 8309
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8309"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8309
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8309
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: acr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: commerce-protocol
+  namespace: aep
+spec:
+  selector:
+    app: commerce-protocol
+  ports:
+    - port: 8309
+      targetPort: 8309
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: commerce-protocol-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: commerce-protocol

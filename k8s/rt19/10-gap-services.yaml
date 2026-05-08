@@ -1,0 +1,173 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# rt19 Gap Closure Services — OPER_RT19-051a
+#
+# New services required for all 12 P1 enforcement gaps:
+#   - siem         (GAP-8: SIEM audit fanout)
+#   - kms-mock     (GAP-7: Policy bundle signature verification)
+#
+# DEPLOYMENT ORDER: Deploy AFTER 08-platform-services.yaml and 09-new-services.yaml
+# PHASE: 6 — Gap closure enforcement services
+#
+# ⚠️ DEPLOY & TEST:
+#   1. Build and push images:
+#        bash deployment/scripts/rt19/build-push-deploy.sh siem
+#        bash deployment/scripts/rt19/build-push-deploy.sh kms-mock
+#   2. Apply this manifest:    kubectl apply -f 10-gap-services.yaml
+#   3. Wait for pods:          kubectl get pods -n rt19 -l tier=gap-closure -w
+#   4. Verify health endpoints:
+#        kubectl exec -n rt19 deploy/flow-enforcer -- curl siem:8090/healthz
+#        kubectl exec -n rt19 deploy/flow-enforcer -- curl kms-mock:9443/healthz
+#
+# Port map (canonical — matches envoy.yaml clusters):
+#   siem     → 8090
+#   kms-mock → 9443
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  SIEM (GAP-8: Security Event Audit Fanout)                                  │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# SIEM mock receives fire-and-forget audit events from the Flow Enforcer WASM.
+# In production, replace image with a SIEM connector sidecar (Splunk, DataDog,
+# Elastic Security) or configure a real SIEM forward via environment variables.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: siem
+  namespace: rt19
+  labels:
+    app: siem
+    tier: gap-closure
+    component: audit
+    oper: RT19-051a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: siem
+  template:
+    metadata:
+      labels:
+        app: siem
+        tier: gap-closure
+    spec:
+      containers:
+        - name: siem
+          image: runtimeaicr.azurecr.io/siem:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: PORT
+              value: "8090"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: siem
+  namespace: rt19
+  labels:
+    tier: gap-closure
+spec:
+  selector:
+    app: siem
+  ports:
+    - port: 8090
+      targetPort: 8090
+  type: ClusterIP
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  KMS Mock (GAP-7: Policy Bundle Signature Verification)                     │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# KMS mock provides /v1/verify for the WASM to validate policy bundle signatures.
+# In production, replace with HashiCorp Vault Transit Engine or AWS KMS endpoint
+# by setting KMS_PROVIDER and the corresponding credential env vars.
+# The mock issues and verifies Ed25519 signatures using a generated key pair
+# persisted in-process — safe for dev/staging; use KMS in prod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kms-mock
+  namespace: rt19
+  labels:
+    app: kms-mock
+    tier: gap-closure
+    component: crypto
+    oper: RT19-051a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kms-mock
+  template:
+    metadata:
+      labels:
+        app: kms-mock
+        tier: gap-closure
+    spec:
+      containers:
+        - name: kms-mock
+          image: runtimeaicr.azurecr.io/kms-mock:latest
+          ports:
+            - containerPort: 9443
+          env:
+            - name: PORT
+              value: "9443"
+            - name: INTERNAL_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: INTERNAL_SERVICE_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9443
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9443
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kms-mock
+  namespace: rt19
+  labels:
+    tier: gap-closure
+spec:
+  selector:
+    app: kms-mock
+  ports:
+    - port: 9443
+      targetPort: 9443
+  type: ClusterIP

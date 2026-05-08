@@ -1,0 +1,166 @@
+name: Deploy to rt19 (Azure AKS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Services to deploy (comma-separated, or "all")'
+        required: true
+        default: 'all'
+        type: string
+      tag:
+        description: 'Image tag'
+        required: false
+        default: 'latest'
+        type: string
+      skip_build:
+        description: 'Skip build — rollout restart only'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  ACR_REGISTRY: ghcr.io/runtimeai-dev
+  AKS_CLUSTER: runtimeai-aks
+  AZ_RESOURCE_GROUP: runtimeai-rg
+  IMAGE_TAG: ${{ github.event.inputs.tag || 'latest' }}
+
+jobs:
+  deploy:
+    name: Deploy to rt19
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout runtimeai-enterprise
+        uses: actions/checkout@v4
+
+      - name: Checkout runtimeai (companion repo)
+        uses: actions/checkout@v4
+        with:
+          repository: runtimeai-dev/runtimeai
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          path: runtimeai
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR Login
+        run: az acr login --name runtimeaicr
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AZ_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER }} \
+            --overwrite-existing
+
+      - name: Parse services
+        id: parse
+        run: |
+          INPUT="${{ github.event.inputs.services }}"
+          if [ "$INPUT" == "all" ]; then
+            echo "services=control-plane dashboard discovery drift flow-enforcer policy-manager cost-ledger data-proxy drift-engine identity-dns waf lifecycle-manager network-analyzer sequence-modeler vault-broker verifier tool-mcp bot-ca auth-service mcp-gateway esign-service esign-landing billing-service ml-service aaic-service auditor-dashboard ai-finops-service marketplace-service runtimeai-landing landing-backend saas-admin-app website-singlepage" >> $GITHUB_OUTPUT
+          else
+            echo "services=$(echo $INPUT | tr ',' ' ')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build, Push, and Deploy
+        run: |
+          TAG="${{ env.IMAGE_TAG }}"
+          SKIP="${{ github.event.inputs.skip_build }}"
+
+          # Service definitions: name|repo_path|namespace|deployment
+          declare -A SVC_MAP=(
+            # Enterprise repo
+            ["control-plane"]="./control-plane|rt19|control-plane"
+            ["dashboard"]="./dashboard|rt19|dashboard"
+            ["discovery"]="./discovery|rt19|discovery"
+            ["drift"]="./drift|rt19|drift"
+            ["flow-enforcer"]="./flow-enforcer|rt19|flow-enforcer"
+            ["policy-manager"]="./policy-manager|rt19|policy-manager"
+            ["cost-ledger"]="./services/cost-ledger|rt19|cost-ledger"
+            ["data-proxy"]="./services/data-proxy|rt19|data-proxy"
+            ["drift-engine"]="./services/drift-engine|rt19|drift-engine"
+            ["identity-dns"]="./services/identity-dns|rt19|identity-dns"
+            ["waf"]="./services/waf|rt19|waf"
+            ["lifecycle-manager"]="./services/lifecycle-manager|rt19|lifecycle-manager"
+            ["network-analyzer"]="./services/network-analyzer|rt19|network-analyzer"
+            ["sequence-modeler"]="./services/sequence-modeler|rt19|sequence-modeler"
+            ["vault-broker"]="./services/vault-broker|rt19|vault-broker"
+            ["verifier"]="./services/verifier|rt19|verifier"
+            ["tool-mcp"]="./services/tool-mcp|rt19|tool-mcp"
+            ["bot-ca"]="./services/bot-ca|rt19|bot-ca"
+            # RuntimeAI repo
+            ["auth-service"]="./runtimeai/auth-service|rt19|auth-service"
+            ["mcp-gateway"]="./runtimeai/mcp_gateway/mcp-gateway|rt19|mcp-gateway"
+            ["esign-service"]="./runtimeai/esign-service/esign-service|rt19|esign-service"
+            ["esign-landing"]="./runtimeai/esign-landing|rt19|esign-landing"
+            ["billing-service"]="./runtimeai/billing-service|rt19|billing-service"
+            ["ml-service"]="./runtimeai/ml-service/ml-intelligence-service|rt19|ml-service"
+            ["aaic-service"]="./runtimeai/auto_ai_compliance/aaic-service|rt19|aaic-service"
+            ["auditor-dashboard"]="./runtimeai/auto_ai_compliance/auditor-dashboard|rt19|auditor-dashboard"
+            ["ai-finops-service"]="./runtimeai/ai_finops/ai-finops-service|rt19|ai-finops-service"
+            ["marketplace-service"]="./runtimeai/agent_marketplace/marketplace-service|rt19|marketplace-service"
+            ["runtimeai-landing"]="./runtimeai/runtimeai-landing|runtimeai-landing|runtimeai-landing"
+            ["landing-backend"]="./runtimeai/landing-backend|runtimeai-landing|landing-backend"
+            ["saas-admin-app"]="./runtimeai/SaaSAdminApp|runtimeai-landing|saas-admin-app"
+            ["website-singlepage"]="./runtimeai/website-singlepage|runtimeai-landing|website-singlepage"
+          )
+
+          FAILED=()
+          SUCCEEDED=()
+
+          for svc in ${{ steps.parse.outputs.services }}; do
+            IFS='|' read -r build_ctx namespace deployment <<< "${SVC_MAP[$svc]}"
+            IMAGE="${{ env.ACR_REGISTRY }}/$svc:$TAG"
+
+            echo "::group::$svc"
+            echo "  Image:     $IMAGE"
+            echo "  Context:   $build_ctx"
+            echo "  Namespace: $namespace"
+
+            if [ "$SKIP" != "true" ]; then
+              echo "  Building..."
+              if docker build -t "$IMAGE" "$build_ctx"; then
+                echo "  Pushing..."
+                docker push "$IMAGE"
+              else
+                echo "::error::Build failed for $svc"
+                FAILED+=("$svc")
+                echo "::endgroup::"
+                continue
+              fi
+            fi
+
+            echo "  Rolling out..."
+            kubectl rollout restart "deployment/$deployment" -n "$namespace"
+            kubectl rollout status "deployment/$deployment" -n "$namespace" --timeout=120s || true
+            SUCCEEDED+=("$svc")
+            echo "::endgroup::"
+          done
+
+          echo ""
+          echo "═══════════════════════════════════════════════════"
+          echo "  Succeeded: ${SUCCEEDED[*]:-none}"
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo "  Failed:    ${FAILED[*]}"
+            exit 1
+          fi
+          echo "═══════════════════════════════════════════════════"
+
+      - name: Verify Deployment
+        if: always()
+        run: |
+          echo "=== rt19 pods ==="
+          kubectl get pods -n rt19 --no-headers
+          echo "=== runtimeai-landing pods ==="
+          kubectl get pods -n runtimeai-landing --no-headers | grep -v "cm-acme"
+          echo "=== certificates ==="
+          kubectl get certificate -A 2>/dev/null || true

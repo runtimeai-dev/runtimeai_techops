@@ -1,0 +1,459 @@
+services:
+  # ── Mailpit — Local Email Testing (catches all SMTP emails) ──
+  mailpit:
+    image: axllent/mailpit:latest
+    pull_policy: always
+    container_name: runtimeai-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # Web UI — http://localhost:8025
+      - "1025:1025"   # SMTP server
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=true
+      - MP_SMTP_AUTH_ALLOW_INSECURE=true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  postgres:
+    image: postgres:15-alpine
+    pull_policy: always
+    container_name: runtimeai-db
+    environment:
+      - POSTGRES_USER=authzion
+      - POSTGRES_PASSWORD=rtai-db-secret-2026
+      - POSTGRES_DB=authzion
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U authzion -d authzion" ]
+    networks:
+      - runtimeai-network
+
+  backend:
+    build:
+      context: ./landing-backend
+      dockerfile: Dockerfile
+    container_name: runtimeai-backend
+    environment:
+      - PORT=8081
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - DB_SCHEMA=public
+      - CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:7080,http://localhost:5173
+    ports:
+      - "8082:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 8081 || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - runtimeai-network
+
+  frontend:
+    build:
+      context: ./runtimeai-landing
+      dockerfile: Dockerfile
+    container_name: runtimeai-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  saas-admin-app:
+    build:
+      context: ./SaaSAdminApp
+      dockerfile: Dockerfile
+    container_name: runtimeai-saas-admin
+    ports:
+      - "7080:80"
+    extra_hosts:
+      - "kube-dns.kube-system.svc.cluster.local:127.0.0.11"
+    networks:
+      - runtimeai-network
+
+  runtimeai-landing:
+    build:
+      context: ./runtimeai-landing
+      dockerfile: Dockerfile
+    container_name: runtimeai-landingpage
+    ports:
+      - "3001:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  mcp-gateway:
+    build:
+      context: ./mcp_gateway/mcp-gateway
+      dockerfile: Dockerfile
+    container_name: runtimeai-mcp-gateway
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_LISTEN_ADDR=:8091
+      - MCP_CREDENTIAL_KEY=${MCP_CREDENTIAL_KEY:-0123456789abcdef0123456789abcdef}
+      - MCP_CREDENTIAL_KEY_ID=docker-dev-key
+      - MCP_JWT_SECRET=${MCP_JWT_SECRET:-mcp-gateway-test-secret-key-2026}
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+    ports:
+      - "8091:8091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8091/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  mcp-server-okta:
+    build:
+      context: ./mcp_gateway/mcp-servers
+      dockerfile: mcp-server-okta/Dockerfile
+    container_name: runtimeai-mcp-server-okta
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_LISTEN_ADDR=:8080
+      # Runs in demo mode without real Okta credentials
+      # Set OKTA_DOMAIN and OKTA_API_TOKEN for production
+    ports:
+      - "8095:8080"
+    depends_on:
+      mcp-gateway:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  ai-finops-service:
+    build:
+      context: ./ai_finops/ai-finops-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-finops
+    environment:
+      - PORT=8092
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:4000,http://localhost:3000,http://localhost:7080
+      - FINOPS_RATE_LIMIT_PER_MIN=200
+      - DB_MAX_OPEN_CONNS=10
+      - DB_MAX_IDLE_CONNS=5
+    ports:
+      - "5055:8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8092/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  aaic-service:
+    build:
+      context: ./auto_ai_compliance/aaic-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-aaic
+    environment:
+      - AAIC_PORT=5056
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:4000,http://localhost:3000,http://localhost:7080
+      - JWT_SIGNING_KEY=${AAIC_JWT_SECRET:-rtai-aaic-jwt-signing-key-2026-secure}
+    ports:
+      - "5056:5056"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:5056/api/aaic/info" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  auditor-dashboard:
+    build:
+      context: ./auto_ai_compliance/auditor-dashboard
+      dockerfile: Dockerfile
+    container_name: runtimeai-auditor-dashboard
+    environment:
+      - VITE_AAIC_API_URL=http://aaic-service:5056
+    ports:
+      - "5173:80"
+    depends_on:
+      aaic-service:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  marketplace-service:
+    build:
+      context: ./agent_marketplace/marketplace-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-marketplace
+    environment:
+      - MARKETPLACE_PORT=8096
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - JWT_SIGNING_KEY=${MARKETPLACE_JWT_SECRET:-rtai-marketplace-jwt-signing-key-2026-secure}
+      - RTAI_PRIVATE_KEY=${MARKETPLACE_RTAI_KEY:-rtai-marketplace-pki-signing-key-2026-secure}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:4000,http://localhost:3000,http://localhost:7080
+    ports:
+      - "8096:8096"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8096/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-auth
+    environment:
+      - AUTH_SERVICE_PORT=8097
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - EMAIL_PROVIDER=smtp
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - EMAIL_FROM=noreply@runtimeai.com
+      - EMAIL_FROM_NAME=RuntimeAI
+      - COOKIE_DOMAIN=localhost
+      - COOKIE_SECURE=false
+      - SESSION_MAX_AGE=604800
+      - CAPTCHA_PROVIDER=none
+      - AUTH_SERVICE_BASE_URL=http://localhost:8199
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - DASHBOARD_URL=http://localhost:4000
+      - ESIGN_URL=http://localhost:3002
+      - AUDITOR_URL=http://localhost:5173
+      - MARKETPLACE_URL=http://localhost:8096
+      - LANDING_URL=http://localhost:3001
+      - ESIGN_URL=http://localhost:3002
+      - CORS_ORIGINS=http://localhost:4000,http://localhost:5173,http://localhost:8096,http://localhost:3001,http://localhost:3002,http://localhost:7080
+    ports:
+      - "8199:8097"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:8097/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - runtimeai-network
+
+  # ── eSign Service ─────────────────────────────────────────
+  esign-service:
+    build:
+      context: ./esign-service/esign-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-esign-service
+    restart: unless-stopped
+    environment:
+      - PORT=8094
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-runtimeai_dev}
+      - LOG_LEVEL=info
+      - STORAGE_BACKEND=local
+      - STORAGE_PATH=/data/esign
+      - STORAGE_SIGNING_SECRET=${ESIGN_SIGNING_SECRET:-esign-hmac-signing-key-2026}
+      - ESIGN_BASE_URL=${ESIGN_BASE_URL:-http://localhost:5057}
+      - ESIGN_SP_ENTITY_ID=${ESIGN_SP_ENTITY_ID:-https://sign.runtimeai.io/saml/metadata}
+      - ESIGN_RATE_LIMIT_PER_MIN=200
+      - DB_MAX_OPEN_CONNS=25
+      - DB_MAX_IDLE_CONNS=10
+      - EMAIL_PROVIDER=smtp
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_FROM=sign@runtimeai.io
+      - AUTH_SERVICE_URL=http://auth-service:8097
+      # PQDP integration (OPER_RT19-060) — defaults to LEGACY; set ESIGN_CRYPTO_MODE=QUANTUM
+      # to enable hybrid PQ signing. Requires quantumvault + pq-sign + pq-policy-engine.
+      - ESIGN_CRYPTO_MODE=${ESIGN_CRYPTO_MODE:-LEGACY}
+      - POD_ID=${POD_ID:-local}
+      - ACTIVE_PODS=${ACTIVE_PODS:-local}
+      - PQDP_TENANT_ID=${PQDP_TENANT_ID:-esign-platform}
+      - QUANTUMVAULT_URL=${QUANTUMVAULT_URL:-http://quantumvault:8200}
+      - QUANTUMVAULT_TOKEN=${QUANTUMVAULT_TOKEN:-dev-vault-token}
+      - PQ_SIGN_URL=${PQ_SIGN_URL:-http://pq-sign:8087}
+      - PQ_POLICY_URL=${PQ_POLICY_URL:-http://pq-policy-engine:8083}
+    ports:
+      - "5057:8094"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8094/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    volumes:
+      - esign_data:/data/esign
+    networks:
+      - runtimeai-network
+
+  # ── eSign Landing + Dashboard (Standalone) ───────────────
+  esign-landing:
+    build:
+      context: ./esign-landing
+      dockerfile: Dockerfile
+    container_name: runtimeai-esign-landing
+    restart: unless-stopped
+    ports:
+      - "3002:3001"
+    environment:
+      - VITE_API_BASE_URL=http://esign-service:5057
+      - VITE_APP_NAME=RuntimeAI Sign
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      esign-service:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  # ── Billing Service (Unified Platform Billing) ────────────
+  billing-service:
+    build:
+      context: ./billing-service
+      dockerfile: Dockerfile
+    container_name: runtimeai-billing-service
+    restart: unless-stopped
+    ports:
+      - "5068:5090"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_CONNECT_CLIENT_ID=${STRIPE_CONNECT_CLIENT_ID}
+      - STRIPE_MODE=${STRIPE_MODE:-test}
+      - BILLING_SERVICE_API_KEY=${BILLING_SERVICE_API_KEY}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - SERVICE_PORT=5090
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - runtimeai-network
+
+  # ── PQDP Services (OPER_RT19-060) — optional for local QUANTUM mode dev ──
+  # Bring up with: ESIGN_CRYPTO_MODE=QUANTUM docker compose up -d
+  quantumvault:
+    image: runtimeaicr.azurecr.io/quantumvault:latest
+    container_name: runtimeai-quantumvault
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - JWT_SECRET=${QUANTUMVAULT_JWT_SECRET:-dev-jwt-secret-32-chars-minimum!!}
+      - ENFORCE_JWT=false
+      - QV_RATE_LIMIT=10000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8200/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - runtimeai-network
+
+  pq-sign:
+    image: runtimeaicr.azurecr.io/pq-sign:latest
+    container_name: runtimeai-pq-sign
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+    environment:
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - JWT_SECRET=${QUANTUMVAULT_JWT_SECRET:-dev-jwt-secret-32-chars-minimum!!}
+      - ENFORCE_JWT=false
+    depends_on:
+      quantumvault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8087/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - runtimeai-network
+
+  pq-policy-engine:
+    image: runtimeaicr.azurecr.io/pq-policy-engine:latest
+    container_name: runtimeai-pq-policy-engine
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - DATABASE_URL=postgres://authzion:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - JWT_SECRET=${QUANTUMVAULT_JWT_SECRET:-dev-jwt-secret-32-chars-minimum!!}
+      - ENFORCE_JWT=false
+    depends_on:
+      quantumvault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8083/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - runtimeai-network
+
+networks:
+  runtimeai-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  esign_data:

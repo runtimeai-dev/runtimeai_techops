@@ -1,0 +1,125 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: runtimeai-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ include "runtimeai.apiDomain" . }}
+        - {{ include "runtimeai.appDomain" . }}
+        - {{ include "runtimeai.esignDomain" . }}
+        - {{ include "runtimeai.auditorDomain" . }}
+        - {{ include "runtimeai.saasDomain" . }}
+        - {{ include "runtimeai.marketplaceDomain" . }}
+        - {{ include "runtimeai.finopsDomain" . }}
+      secretName: runtimeai-tls
+  {{- end }}
+  rules:
+    # API — api.<prefix>.<domain>
+    - host: {{ include "runtimeai.apiDomain" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: control-plane
+                port:
+                  number: {{ .Values.controlPlane.port }}
+    # Dashboard — app.<prefix>.<domain>
+    - host: {{ include "runtimeai.appDomain" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 80
+    # eSign — esign.<prefix>.<domain>
+    - host: {{ include "runtimeai.esignDomain" . }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: esign-service
+                port:
+                  number: {{ .Values.esignService.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: esign-landing
+                port:
+                  number: {{ .Values.esignLanding.port }}
+    # Auditor — auditor.<prefix>.<domain>
+    - host: {{ include "runtimeai.auditorDomain" . }}
+      http:
+        paths:
+          - path: /api/aaic/
+            pathType: Prefix
+            backend:
+              service:
+                name: aaic-service
+                port:
+                  number: {{ .Values.aaicService.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auditor-dashboard
+                port:
+                  number: 80
+    # SaaS Admin — saas.<prefix>.<domain>
+    - host: {{ include "runtimeai.saasDomain" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: saas-admin
+                port:
+                  number: {{ .Values.saasAdmin.port }}
+    # Marketplace — marketplace.<prefix>.<domain>
+    - host: {{ include "runtimeai.marketplaceDomain" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: marketplace-service
+                port:
+                  number: {{ .Values.marketplace.port }}
+    # FinOps — finops.<prefix>.<domain>
+    - host: {{ include "runtimeai.finopsDomain" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-finops-service
+                port:
+                  number: {{ .Values.aiFinops.port }}
+{{- end }}

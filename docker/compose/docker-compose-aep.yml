@@ -1,0 +1,367 @@
+version: "3.9"
+
+# AEP — Agentic Enablement Platform — Full Stack Docker Compose
+# Usage: docker compose up --build -d
+# Requires: .env file (copy from .env.example and fill in JWT_SECRET)
+
+networks:
+  aep:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+
+x-common-env: &common-env
+  DATABASE_URL: postgres://aep:aep_local@postgres:5432/agentic_platform?sslmode=disable
+  JWT_SECRET: ${JWT_SECRET:-}
+  ENFORCE_JWT: ${ENFORCE_JWT:-false}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  AEP_RATE_LIMIT: ${AEP_RATE_LIMIT:-1000}
+
+x-service-base: &service-base
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - aep
+  restart: unless-stopped
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg15
+    command: postgres -N 300
+    environment:
+      POSTGRES_DB: agentic_platform
+      POSTGRES_USER: aep
+      POSTGRES_PASSWORD: aep_local
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aep -d agentic_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aep
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - aep
+    restart: unless-stopped
+
+  # ── Layer 1: Agent Infrastructure ──────────────────────────────────────────
+
+  kya:
+    <<: *service-base
+    build:
+      context: ./services/kya
+      dockerfile: Dockerfile
+    ports:
+      - "8301:8301"
+    environment:
+      <<: *common-env
+      PORT: "8301"
+      BOT_CA_URL: ${BOT_CA_URL:-}
+      IDENTITY_FABRIC_URL: ${IDENTITY_FABRIC_URL:-}
+      COST_CONTROL_URL: http://cost-control:8302
+      COMMERCE_RAILS_URL: http://commerce-rails:8308
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8301/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  cost-control:
+    <<: *service-base
+    build:
+      context: ./services/cost-control
+      dockerfile: Dockerfile
+    ports:
+      - "8302:8302"
+    environment:
+      <<: *common-env
+      PORT: "8302"
+      AI_FINOPS_URL: ${AI_FINOPS_URL:-}
+      COST_LEDGER_URL: ${COST_LEDGER_URL:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8302/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  audit-black-box:
+    <<: *service-base
+    build:
+      context: ./services/audit-black-box
+      dockerfile: Dockerfile
+    ports:
+      - "8303:8303"
+    environment:
+      <<: *common-env
+      PORT: "8303"
+      PQ_SIGN_URL: ${PQ_SIGN_URL:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8303/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  pii-shield:
+    <<: *service-base
+    build:
+      context: ./services/pii-shield
+      dockerfile: Dockerfile
+    ports:
+      - "8304:8304"
+    environment:
+      <<: *common-env
+      PORT: "8304"
+      QUANTUM_VAULT_URL: ${QUANTUM_VAULT_URL:-}
+      MEMORY_VAULT_URL: http://memory-vault:8307
+      AUDIT_URL: http://audit-black-box:8303
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8304/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  observability:
+    <<: *service-base
+    build:
+      context: ./services/observability
+      dockerfile: Dockerfile
+    ports:
+      - "8305:8305"
+    environment:
+      <<: *common-env
+      PORT: "8305"
+      PQ_SIGN_URL: ${PQ_SIGN_URL:-}
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8305/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Layer 2: Agent Trust & Commerce ────────────────────────────────────────
+
+  fraud-shield:
+    <<: *service-base
+    build:
+      context: ./services/fraud-shield
+      dockerfile: Dockerfile
+    ports:
+      - "8306:8306"
+    environment:
+      <<: *common-env
+      PORT: "8306"
+      KYA_URL: http://kya:8301
+      COST_CONTROL_URL: http://cost-control:8302
+      AUDIT_URL: http://audit-black-box:8303
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8306/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  memory-vault:
+    <<: *service-base
+    build:
+      context: ./services/memory-vault
+      dockerfile: Dockerfile
+    ports:
+      - "8307:8307"
+    environment:
+      <<: *common-env
+      PORT: "8307"
+      QUANTUM_VAULT_URL: ${QUANTUM_VAULT_URL:-}
+      PII_SHIELD_URL: http://pii-shield:8304
+      AUDIT_URL: http://audit-black-box:8303
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8307/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  commerce-rails:
+    <<: *service-base
+    build:
+      context: ./services/commerce-rails
+      dockerfile: Dockerfile
+    ports:
+      - "8308:8308"
+    environment:
+      <<: *common-env
+      PORT: "8308"
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      KYA_URL: http://kya:8301
+      COST_CONTROL_URL: http://cost-control:8302
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+      AUDIT_URL: http://audit-black-box:8303
+      QUANTOSIGN_URL: ${QUANTOSIGN_URL:-}
+      PO_APPROVAL_THRESHOLD_USD: ${PO_APPROVAL_THRESHOLD_USD:-1000}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8308/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  commerce-protocol:
+    <<: *service-base
+    build:
+      context: ./services/commerce-protocol
+      dockerfile: Dockerfile
+    ports:
+      - "8309:8309"
+    environment:
+      <<: *common-env
+      PORT: "8309"
+      KYA_URL: http://kya:8301
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+      COMMERCE_RAILS_URL: http://commerce-rails:8308
+      PQ_SIGN_URL: ${PQ_SIGN_URL:-}
+      AUDIT_URL: http://audit-black-box:8303
+      NEGOTIATION_MAX_ROUNDS: ${NEGOTIATION_MAX_ROUNDS:-10}
+      NEGOTIATION_TTL_MINUTES: ${NEGOTIATION_TTL_MINUTES:-30}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8309/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Layer 3: Developer & Marketplace ───────────────────────────────────────
+
+  developer-hub:
+    <<: *service-base
+    build:
+      context: ./services/developer-hub
+      dockerfile: Dockerfile
+    ports:
+      - "8311:8311"
+    environment:
+      <<: *common-env
+      PORT: "8311"
+      KYA_URL: http://kya:8301
+      COST_CONTROL_URL: http://cost-control:8302
+      AUDIT_URL: http://audit-black-box:8303
+      BEHAVIORAL_SCORE_MIN: ${BEHAVIORAL_SCORE_MIN:-70}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8311/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Layer 4: Enterprise Domain Rails ───────────────────────────────────────
+
+  contract-manager:
+    <<: *service-base
+    build:
+      context: ./services/contract-manager
+      dockerfile: Dockerfile
+    ports:
+      - "8312:8312"
+    environment:
+      <<: *common-env
+      PORT: "8312"
+      KYA_URL: http://kya:8301
+      AUDIT_URL: http://audit-black-box:8303
+      PII_SHIELD_URL: http://pii-shield:8304
+      QUANTOSIGN_AEP_URL: ${QUANTOSIGN_AEP_URL:-}
+      SLA_MONITOR_INTERVAL_MINUTES: ${SLA_MONITOR_INTERVAL_MINUTES:-60}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8312/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  procurement-hub:
+    <<: *service-base
+    build:
+      context: ./services/procurement-hub
+      dockerfile: Dockerfile
+    ports:
+      - "8313:8313"
+    environment:
+      <<: *common-env
+      PORT: "8313"
+      KYA_URL: http://kya:8301
+      COST_CONTROL_URL: http://cost-control:8302
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+      AUDIT_URL: http://audit-black-box:8303
+      QUANTOSIGN_AEP_URL: ${QUANTOSIGN_AEP_URL:-}
+      CLM_URL: http://contract-manager:8312
+      FINANCE_RAIL_URL: http://finance-rail:8314
+      PO_APPROVAL_THRESHOLD_USD: ${PO_APPROVAL_THRESHOLD_USD:-5000}
+      THREE_WAY_MATCH_QTY_TOLERANCE_PCT: ${THREE_WAY_MATCH_QTY_TOLERANCE_PCT:-2}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8313/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  finance-rail:
+    <<: *service-base
+    build:
+      context: ./services/finance-rail
+      dockerfile: Dockerfile
+    ports:
+      - "8314:8314"
+    environment:
+      <<: *common-env
+      PORT: "8314"
+      FRAUD_SHIELD_URL: http://fraud-shield:8306
+      COMMERCE_RAILS_URL: http://commerce-rails:8308
+      AUDIT_URL: http://audit-black-box:8303
+      PII_SHIELD_URL: http://pii-shield:8304
+      QUANTOSIGN_AEP_URL: ${QUANTOSIGN_AEP_URL:-}
+      HIGH_VALUE_PAYMENT_THRESHOLD_USD: ${HIGH_VALUE_PAYMENT_THRESHOLD_USD:-25000}
+      CASH_RUNWAY_ALERT_WEEKS: ${CASH_RUNWAY_ALERT_WEEKS:-4}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8314/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  marketplace:
+    <<: *service-base
+    build:
+      context: ./services/marketplace
+      dockerfile: Dockerfile
+    ports:
+      - "8310:8310"
+    environment:
+      <<: *common-env
+      PORT: "8310"
+      KYA_URL: http://kya:8301
+      AUDIT_URL: http://audit-black-box:8303
+      ACP_URL: http://commerce-protocol:8309
+      OBSERVABILITY_URL: http://observability:8305
+      MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-}
+      MARKETPLACE_CUT_PCT: ${MARKETPLACE_CUT_PCT:-15}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8310/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

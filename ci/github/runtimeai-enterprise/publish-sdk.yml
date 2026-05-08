@@ -1,0 +1,82 @@
+# Publish SDKs to npm and PyPI on version tag push
+# Triggered by: git tag sdk-v1.0.0 && git push origin sdk-v1.0.0
+
+name: Publish SDKs
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-typescript-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        working-directory: sdk/typescript
+        run: npm ci
+
+      - name: Build
+        working-directory: sdk/typescript
+        run: npm run build
+
+      - name: Verify package contents
+        working-directory: sdk/typescript
+        run: npm pack --dry-run
+
+      - name: Audit for vulnerabilities
+        working-directory: sdk/typescript
+        run: npm audit --production
+
+      - name: Publish to npm
+        working-directory: sdk/typescript
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-python-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build package
+        working-directory: sdk-python
+        run: python -m build
+
+      - name: Verify import
+        working-directory: sdk-python
+        run: |
+          pip install -e .
+          python -c "from runtimeai import RuntimeAI; print('✅ Import OK')"
+
+      - name: Check package description
+        working-directory: sdk-python
+        run: twine check dist/*
+
+      - name: Publish to PyPI
+        working-directory: sdk-python
+        run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}

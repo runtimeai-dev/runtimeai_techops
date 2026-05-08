@@ -1,0 +1,59 @@
+# OPER_RT19-062: PQ Policy Engine — Rego/OPA agent policy evaluation (shared)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-policy-engine
+  namespace: pqdata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pq-policy-engine
+  template:
+    metadata:
+      labels:
+        app: pq-policy-engine
+    spec:
+      containers:
+        - name: pq-policy-engine
+          image: runtimeaicr.azurecr.io/pq-policy-engine:latest
+          env:
+            - name: PORT
+              value: "8083"
+            - name: QUANTUMVAULT_URL
+              value: https://quantumvault.pqdata.svc.cluster.local:8200
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-shared-secrets
+                  key: jwt-secret
+          ports:
+            - containerPort: 8083
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-policy-engine
+  namespace: pqdata
+spec:
+  selector:
+    app: pq-policy-engine
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083

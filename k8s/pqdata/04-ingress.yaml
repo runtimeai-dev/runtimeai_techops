@@ -1,0 +1,230 @@
+# =============================================================================
+# Qutonomous Security Platform — Ingress Configuration
+# Exposes PQ Data endpoints on qutonomous.rt19.runtimeai.io
+# Uses the existing Let's Encrypt wildcard cert.
+# =============================================================================
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-vault
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  tls:
+    - hosts:
+        - "vault.rt19.runtimeai.io"
+      secretName: letsencrypt-prod-key
+  rules:
+    - host: vault.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: quantumvault
+                port:
+                  number: 8200
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-services
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  tls:
+    - hosts:
+        - "qutonomous.rt19.runtimeai.io"
+      secretName: letsencrypt-prod-key
+  rules:
+    - host: qutonomous.rt19.runtimeai.io
+      http:
+        paths:
+          # Policy Engine
+          - path: /policy(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-policy-engine
+                port:
+                  number: 8083
+          # CryptoGuard
+          - path: /crypto(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-cryptoguard
+                port:
+                  number: 8084
+          # Secure DataShare
+          - path: /datashare(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-secure-datashare
+                port:
+                  number: 8085
+          # TokenVault
+          - path: /tokens(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-tokenvault
+                port:
+                  number: 8086
+          # PQ Sign
+          - path: /sign(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-sign
+                port:
+                  number: 8087
+          # PQ Comply
+          - path: /comply(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-comply
+                port:
+                  number: 8090
+          # Transit Shield
+          - path: /transit(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pq-transit-shield
+                port:
+                  number: 8443
+
+---
+# Frontend ingresses — one Ingress per subdomain for clarity
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-dashboard
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  tls:
+    - hosts:
+        - "app.qutonomous.com"
+      secretName: qutonomous-tls-dashboard
+  rules:
+    - host: app.qutonomous.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qutonomous-dashboard
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-auditor
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  tls:
+    - hosts:
+        - "auditor.qutonomous.com"
+      secretName: qutonomous-tls-auditor
+  rules:
+    - host: auditor.qutonomous.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qutonomous-auditor
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-admin
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # IP allowlist — restrict to internal/VPN CIDR only
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+spec:
+  tls:
+    - hosts:
+        - "admin.qutonomous.com"
+      secretName: qutonomous-tls-admin
+  rules:
+    - host: admin.qutonomous.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qutonomous-admin
+                port:
+                  number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qutonomous-ingress-landing
+  namespace: qutonomous
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - "www.qutonomous.com"
+        - "qutonomous.com"
+      secretName: qutonomous-landing-tls-cert
+  rules:
+    - host: www.qutonomous.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qutonomous-landing
+                port:
+                  number: 80
+    - host: qutonomous.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qutonomous-landing
+                port:
+                  number: 80

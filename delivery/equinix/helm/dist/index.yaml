@@ -1,0 +1,26 @@
+apiVersion: v1
+entries:
+  runtimeai:
+  - apiVersion: v2
+    appVersion: 1.0.0-trial
+    created: "2026-04-06T11:40:25.181699-07:00"
+    description: RuntimeAI — Autonomous Economy Control Plane
+    digest: 9c61d1b958c086bda76e08248722afa32e1acbf4060d09489bd999d063d45b7a
+    home: https://runtimeai.io
+    keywords:
+    - ai-governance
+    - agent-security
+    - compliance
+    - soc2
+    - fedramp
+    - mcp-gateway
+    - kill-switch
+    maintainers:
+    - email: engineering@runtimeai.io
+      name: RuntimeAI Engineering
+    name: runtimeai
+    type: application
+    urls:
+    - https://charts.runtimeai.io/runtimeai-1.0.0.tgz
+    version: 1.0.0
+generated: "2026-04-06T11:40:25.180852-07:00"

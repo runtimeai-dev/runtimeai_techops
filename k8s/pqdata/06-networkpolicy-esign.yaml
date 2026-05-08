@@ -1,0 +1,146 @@
+# =============================================================================
+# PQDP-017 §1.4: NetworkPolicy — allow eSign rt01/rt02/gateway to reach pqdata
+# =============================================================================
+#
+# The live cluster uses namespace `pqdata` (not `qutonomous`). eSign pods in
+# rt01/rt02 plus the gateway must reach QuantumVault (8200), PQ Sign (8087/
+# 8443), and PQ Policy Engine (8083). default-deny-ingress in pqdata blocks
+# this; these policies carve out the needed paths.
+#
+# Apply:  kubectl apply -f 06-networkpolicy-esign.yaml
+# Verify: kubectl get networkpolicy -n pqdata
+#
+# These policies assume CNI NetworkPolicy enforcement is enabled on the AKS
+# cluster (Calico or Azure NPM). AKS with default Kubenet does not enforce
+# NetworkPolicy — verify with `kubectl get aks ... --query networkPolicy`.
+
+---
+# Default-deny on pqdata so only explicit allows below get through.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: pqdata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Allow intra-namespace: pq-* services talk to each other freely.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pqdata-internal
+  namespace: pqdata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pqdata
+
+---
+# Allow eSign pods + gateway to reach QuantumVault (both HTTP :8200 and
+# TLS-enabled :8200 share the same port; QV_TLS_ENABLED flips the handler).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-esign-to-quantumvault
+  namespace: pqdata
+spec:
+  podSelector:
+    matchLabels:
+      app: quantumvault
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt01
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt02
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - protocol: TCP
+          port: 8200
+
+---
+# Allow eSign + gateway to reach PQ Sign (TLS sidecar on :8443, plaintext
+# :8087 during bring-up). Gateway calls verify; eSign calls sign/verify.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-esign-to-pq-sign
+  namespace: pqdata
+spec:
+  podSelector:
+    matchLabels:
+      app: pq-sign
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt01
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt02
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - protocol: TCP
+          port: 8087
+        - protocol: TCP
+          port: 8443
+
+---
+# Allow eSign to reach PQ Policy Engine for agent-signing policy evaluation.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-esign-to-pq-policy
+  namespace: pqdata
+spec:
+  podSelector:
+    matchLabels:
+      app: pq-policy-engine
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt01
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt02
+      ports:
+        - protocol: TCP
+          port: 8083
+
+---
+# Allow ingress-nginx (if used) to hit any pqdata pod it routes to.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: pqdata
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx

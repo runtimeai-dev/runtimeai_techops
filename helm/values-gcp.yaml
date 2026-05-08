@@ -1,0 +1,12 @@
+partner: { cloud: gcp }
+ingress:
+  className: gce         # GKE ingress
+  tlsClusterIssuer: letsencrypt-prod
+controlPlane:
+  storageClass: standard-rwo
+mcpGateway:
+  storageClass: standard-rwo
+externalServices:
+  postgres: { enabled: true }   # use Cloud SQL via DATABASE_URL secret
+  redis:    { enabled: true }   # Memorystore via REDIS_URL secret
+  blob:     { enabled: true }   # GCS bucket

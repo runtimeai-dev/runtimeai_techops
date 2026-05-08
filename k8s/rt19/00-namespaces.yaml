@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rt19
+  labels:
+    app.kubernetes.io/part-of: runtimeai
+    environment: production
+    # F9-J — PodSecurity Standards (k8s 1.25+).
+    # Start in `audit` (warn-only) so existing workloads keep running while
+    # we capture violations; flip to `enforce` after triage. `restricted`
+    # blocks privileged pods, hostPath, hostNetwork, etc.
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: runtimeai-landing
+  labels:
+    app.kubernetes.io/part-of: runtimeai
+    environment: production

@@ -1,0 +1,142 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: commerce-rails
+  namespace: aep
+  labels:
+    app: commerce-rails
+    service: commerce-rails
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8308
+    targetPort: 8308
+    protocol: TCP
+    name: http
+  selector:
+    app: commerce-rails
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commerce-rails
+  namespace: aep
+  labels:
+    app: commerce-rails
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: commerce-rails
+  template:
+    metadata:
+      labels:
+        app: commerce-rails
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: commerce-rails
+        image: runtimeaicr.azurecr.io/aep/commerce-rails:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8308
+          name: http
+        env:
+        - name: PORT
+          value: "8308"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: VENDOR_WRAPPER_URL
+          value: "http://vendor-wrapper.runtimeai-enterprise.svc.cluster.local:8103"
+        - name: COST_CONTROL_URL
+          value: "http://cost-control.aep.svc.cluster.local:8302"
+        - name: AUDIT_BLACK_BOX_URL
+          value: "http://audit-black-box.aep.svc.cluster.local:8303"
+        - name: PII_SHIELD_URL
+          value: "http://pii-shield.aep.svc.cluster.local:8304"
+        - name: QUANTOSIGN_URL
+          value: "http://quantosign.runtimeai.svc.cluster.local:8313"
+        - name: STRIPE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: stripe-api-key
+              optional: true
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1200m
+            memory: 768Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8308
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8308
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - commerce-rails
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: commerce-rails-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: commerce-rails
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

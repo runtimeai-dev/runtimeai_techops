@@ -1,0 +1,103 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: contract-manager
+  namespace: aep
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8312
+    targetPort: 8312
+  selector:
+    app: contract-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contract-manager
+  namespace: aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: contract-manager
+  template:
+    metadata:
+      labels:
+        app: contract-manager
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: contract-manager
+        image: runtimeaicr.azurecr.io/aep/contract-manager:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8312
+        env:
+        - name: PORT
+          value: "8312"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: QUANTOSIGN_URL
+          value: "http://quantosign.runtimeai.svc.cluster.local:8313"
+        - name: AUDIT_BLACK_BOX_URL
+          value: "http://audit-black-box.aep.svc.cluster.local:8303"
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8312
+          initialDelaySeconds: 15
+          periodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - contract-manager
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: contract-manager-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: contract-manager
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

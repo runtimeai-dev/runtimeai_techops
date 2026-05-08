@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arh-config
+  namespace: runtimecrm
+data:
+  PORT: "8315"
+  RUNTIME_ENVIRONMENT: "production"
+  # rt19 service names — verified via `kubectl get svc -n rt19`
+  AUTH_SERVICE_URL: "http://auth-svc.rt19.svc.cluster.local:8097"
+  AUTH_JWKS_URL: "http://auth-svc.rt19.svc.cluster.local:8097/.well-known/jwks.json"
+  AUTH_JWT_ISSUER: "auth.runtimeai.com"
+  AUTH_COOKIE_DOMAIN: ".runtimecrm.com"
+  # AUTH_ADMIN_SECRET is in arh-secrets (not here — never put secrets in ConfigMap)
+  BILLING_SERVICE_URL: "http://billing-service.rt19.svc.cluster.local:5090"
+  ENFORCE_BILLING: "true"
+  ENFORCE_JWT: "true"
+  ENFORCE_PII_SHIELD: "true"
+  ENFORCE_KYA: "true"
+  ENFORCE_LLM_BROKER: "true"
+  # AEP services live in aep namespace — deployed 2026-04-23.
+  PII_SHIELD_URL: "http://pii-shield.aep.svc.cluster.local:8304"
+  KYA_URL: "http://kya.aep.svc.cluster.local:8301"
+  MEMORY_VAULT_URL: "http://memory-vault.aep.svc.cluster.local:8307"
+  AUDIT_LOG_URL: "http://audit-black-box.aep.svc.cluster.local:8303"
+  FRAUD_SHIELD_URL: "http://fraud-shield.aep.svc.cluster.local:8306"
+  # rt19 vendor-wrapper exposes LLM Broker as `vw-proxy` service.
+  LLM_BROKER_URL: "http://vw-proxy.rt19.svc.cluster.local:8103"
+  SMTP_HOST: "smtp.sendgrid.net"
+  SMTP_PORT: "587"
+  SMTP_DAILY_LIMIT: "100"
+  MAX_FOLLOWUPS: "2"
+  SCHEDULER_INTERVAL_SECS: "60"
+  AGENT_WORKER_COUNT: "4"
+  # AEP-024 Agent Builder Factory — Stage 1 (1% sample ramp)
+  AGENT_FACTORY_URL: "http://agent-builder-factory.aep.svc.cluster.local:8200"
+  AGENT_FACTORY_ENABLED: "true"
+  AGENT_FACTORY_SAMPLE_RATE: "0.01"
+  TRIAL_MAGIC_LINK_BASE_URL: "https://app.runtimecrm.io"

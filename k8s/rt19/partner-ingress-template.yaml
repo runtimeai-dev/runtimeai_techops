@@ -1,0 +1,54 @@
+# OPER_RT19-087d — Partner-namespaced ingress template (Model A managed SaaS).
+#
+# Apply ONE Ingress per partner-tenant; cert-manager auto-issues TLS for both
+# the rt19 subdomain AND any custom CNAME the partner registers.
+#
+# Replace placeholders:
+#   {{PARTNER_NAMESPACE}}  e.g. scorpius
+#   {{PARTNER_CNAME}}      e.g. platform.scorpius.com (omit the second TLS
+#                          entry if the partner has not registered a CNAME)
+#
+# The CP routes_whitelabel.go endpoint POST /api/admin/whitelabel/tenants/{id}/cname
+# triggers cert-manager to add the SAN.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: partner-{{PARTNER_NAMESPACE}}
+  namespace: rt19
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 16m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{PARTNER_NAMESPACE}}.rt19.runtimeai.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: dashboard
+            port:
+              number: 4000
+        path: /
+        pathType: Prefix
+  # Custom CNAME (optional)
+  - host: {{PARTNER_CNAME}}
+    http:
+      paths:
+      - backend:
+          service:
+            name: dashboard
+            port:
+              number: 4000
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts: [{{PARTNER_NAMESPACE}}.rt19.runtimeai.io]
+    secretName: partner-{{PARTNER_NAMESPACE}}-rt19-tls
+  - hosts: [{{PARTNER_CNAME}}]
+    secretName: partner-{{PARTNER_NAMESPACE}}-cname-tls

@@ -1,0 +1,714 @@
+# =============================================================================
+# RuntimeAI rt19 — Monitoring Stack (Prometheus + Grafana)
+#
+# Deploys a lightweight monitoring stack inside AKS for:
+#   - Pod health & resource usage
+#   - HTTP traffic metrics (requests, latency, errors)
+#   - Database & Redis connection monitoring
+#   - Public endpoint availability
+#
+# USAGE:
+#   kubectl apply -f 05-monitoring.yaml
+#   # Access Grafana: kubectl port-forward svc/grafana 3000:3000 -n monitoring
+#   # Default login: admin / admin (change on first login)
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: runtimeai-monitoring
+---
+# =============================================================================
+# Prometheus — Metrics Collection
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+    # ── Scrape Configs ──────────────────────────────────────────────────
+    scrape_configs:
+      # ── Prometheus self-monitoring ──
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # ── Kubernetes node metrics ──
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # ── rt19 pod services (control-plane /metrics) ──
+      - job_name: 'rt19-services'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['rt19']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            regex: (.+);(.+)
+            replacement: $2:$1
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: app
+
+      # ── Landing services ──
+      - job_name: 'landing-services'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['runtimeai-landing']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: app
+
+      # ── kube-state-metrics (pod/deployment health) ──
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.monitoring:8080']
+
+      # ── Node Exporter (node CPU, memory, disk) ──
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['monitoring']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_endpoints_name]
+            action: keep
+            regex: node-exporter-prometheus-node-exporter
+          - source_labels: [__meta_kubernetes_endpoint_node_name]
+            action: replace
+            target_label: instance
+
+      # ── cAdvisor / Kubelet (container CPU, memory, PV) ──
+      - job_name: 'kubelet-cadvisor'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        metrics_path: /metrics/cadvisor
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # ── Kubelet metrics (PV usage) ──
+      - job_name: 'kubelet'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+      # ── Blackbox exporter (public endpoint probes) ──
+      - job_name: 'blackbox-https'
+        metrics_path: /probe
+        params:
+          module: [http_2xx_ssl]
+        static_configs:
+          - targets:
+              - https://www.runtimeai.io              # Landing page
+              - https://admin.runtimeai.io             # SaaS Admin
+              - https://app.rt19.runtimeai.io          # Dashboard
+              - https://api.rt19.runtimeai.io/health   # API health
+              - https://esign.rt19.runtimeai.io        # eSign landing
+              - https://auditor.rt19.runtimeai.io      # Auditor Dashboard
+              - https://marketplace.rt19.runtimeai.io  # Agent Marketplace
+              - https://finops.rt19.runtimeai.io       # AI FinOps
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring:9115
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      securityContext:
+        fsGroup: 65534
+        runAsUser: 65534
+        runAsNonRoot: true
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.52.0
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=15d'
+            - '--storage.tsdb.retention.size=5GB'
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "services", "endpoints", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/metrics"]
+    verbs: ["get"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+# =============================================================================
+# Blackbox Exporter — Public Endpoint Probing (HTTP/HTTPS checks)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-config
+  namespace: monitoring
+data:
+  blackbox.yml: |
+    modules:
+      http_2xx_ssl:
+        prober: http
+        timeout: 10s
+        http:
+          valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+          valid_status_codes: [200, 301, 302]
+          method: GET
+          follow_redirects: true
+          tls_config:
+            insecure_skip_verify: false
+          preferred_ip_protocol: "ip4"
+      http_2xx:
+        prober: http
+        timeout: 10s
+        http:
+          valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+          valid_status_codes: [200]
+          method: GET
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app: blackbox-exporter
+    spec:
+      containers:
+        - name: blackbox-exporter
+          image: prom/blackbox-exporter:v0.25.0
+          args:
+            - '--config.file=/config/blackbox.yml'
+          ports:
+            - containerPort: 9115
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+      volumes:
+        - name: config
+          configMap:
+            name: blackbox-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  selector:
+    app: blackbox-exporter
+  ports:
+    - port: 9115
+      targetPort: 9115
+---
+# =============================================================================
+# kube-state-metrics — Kubernetes Object State
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: kube-state-metrics
+          image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.12.0
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  selector:
+    app: kube-state-metrics
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# =============================================================================
+# Grafana — Dashboards & Visualization
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        uid: prometheus
+        url: http://prometheus.monitoring:9090
+        isDefault: true
+        editable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: monitoring
+data:
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: 'RuntimeAI'
+        type: file
+        disableDeletion: false
+        editable: true
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  rt19-overview.json: |
+    {
+      "id": null,
+      "uid": "rt19-overview",
+      "title": "RuntimeAI rt19 — Pod Overview",
+      "tags": ["runtimeai", "rt19"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Public Endpoints — Up/Down",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "probe_success{job=\"blackbox-https\"}",
+            "legendFormat": "{{instance}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "TLS Certificate Expiry (days)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox-https\"} - time()) / 86400",
+            "legendFormat": "{{instance}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "d",
+              "decimals": 0,
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 14 }, { "color": "green", "value": 30 }] }
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Endpoint Response Time (ms)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "probe_duration_seconds{job=\"blackbox-https\"} * 1000",
+            "legendFormat": "{{instance}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": { "defaults": { "unit": "ms" } }
+        },
+        {
+          "id": 4,
+          "title": "Pod Status — rt19 Namespace",
+          "type": "table",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "kube_pod_status_phase{namespace=\"rt19\"} == 1",
+            "legendFormat": "{{pod}} — {{phase}}",
+            "format": "table",
+            "instant": true,
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }]
+        },
+        {
+          "id": 5,
+          "title": "Pod Status — Landing Namespace",
+          "type": "table",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "kube_pod_status_phase{namespace=\"runtimeai-landing\"} == 1",
+            "legendFormat": "{{pod}} — {{phase}}",
+            "format": "table",
+            "instant": true,
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }]
+        },
+        {
+          "id": 6,
+          "title": "Container CPU Usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "rate(container_cpu_usage_seconds_total{namespace=~\"rt19|runtimeai-landing\", container!=\"POD\", container!=\"\"}[5m]) * 100",
+            "legendFormat": "{{namespace}}/{{pod}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": { "defaults": { "unit": "percent" } }
+        },
+        {
+          "id": 7,
+          "title": "Container Memory Usage (MB)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "container_memory_working_set_bytes{namespace=~\"rt19|runtimeai-landing\", container!=\"POD\", container!=\"\"} / 1048576",
+            "legendFormat": "{{namespace}}/{{pod}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": { "defaults": { "unit": "MB" } }
+        },
+        {
+          "id": 8,
+          "title": "Pod Restarts (last 1h)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "increase(kube_pod_container_status_restarts_total{namespace=~\"rt19|runtimeai-landing\"}[1h])",
+            "legendFormat": "{{pod}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 3 }] }
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "Node CPU and Memory",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "100 - (avg by(instance)(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU pct — {{instance}}", "datasource": { "type": "prometheus", "uid": "prometheus" } },
+            { "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "legendFormat": "Memory pct — {{instance}}", "datasource": { "type": "prometheus", "uid": "prometheus" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "percent", "max": 100 } }
+        },
+        {
+          "id": 10,
+          "title": "Persistent Volume Usage",
+          "type": "gauge",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 40 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100",
+            "legendFormat": "{{persistentvolumeclaim}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "max": 100,
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 }] }
+            }
+          }
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+        runAsNonRoot: true
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "RuntimeAI2026!"
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: "/etc/grafana/dashboards/rt19-overview.json"
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+            - name: data
+              mountPath: /var/lib/grafana
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+# =============================================================================
+# Ingress — Expose Grafana at grafana.rt19.runtimeai.io (optional)
+# Uncomment below to make Grafana publicly accessible
+# =============================================================================
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: grafana-ingress
+#   namespace: monitoring
+#   annotations:
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts:
+#         - grafana.rt19.runtimeai.io
+#       secretName: grafana-tls
+#   rules:
+#     - host: grafana.rt19.runtimeai.io
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: grafana
+#                 port:
+#                   number: 3000

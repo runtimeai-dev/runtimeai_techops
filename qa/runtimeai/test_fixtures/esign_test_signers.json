@@ -1,0 +1,92 @@
+{
+  "_comment": "eSign QA Test Fixtures — Test Email Addresses. NEVER use production @runtimeai.io emails.",
+  "signers": [
+    {
+      "id": "qa-signer-1",
+      "name": "QA Signer One",
+      "email": "qa-signer-1@test.runtimeai.io",
+      "role": "approver",
+      "signing_order": 1
+    },
+    {
+      "id": "qa-signer-2",
+      "name": "QA Signer Two",
+      "email": "qa-signer-2@test.runtimeai.io",
+      "role": "signer",
+      "signing_order": 2
+    },
+    {
+      "id": "qa-signer-3",
+      "name": "QA Signer Three",
+      "email": "qa-signer-3@test.runtimeai.io",
+      "role": "witness",
+      "signing_order": 3
+    }
+  ],
+  "senders": [
+    {
+      "id": "qa-sender-1",
+      "name": "QA Document Sender",
+      "email": "qa-sender@test.runtimeai.io"
+    }
+  ],
+  "test_documents": [
+    {
+      "id": "qa-doc-1",
+      "title": "QA Test NDA Document",
+      "filename": "qa_test_nda.pdf",
+      "signer_email": "qa-signer-1@test.runtimeai.io",
+      "sender_email": "qa-sender@test.runtimeai.io",
+      "fields": [
+        {
+          "id": "field_1",
+          "label": "Full Name",
+          "type": "text",
+          "page": 1,
+          "x_position": 100,
+          "y_position": 200,
+          "required": true
+        },
+        {
+          "id": "field_2",
+          "label": "Date",
+          "type": "date",
+          "page": 1,
+          "x_position": 100,
+          "y_position": 250,
+          "required": true
+        },
+        {
+          "id": "field_3",
+          "label": "Signature",
+          "type": "signature",
+          "page": 2,
+          "x_position": 150,
+          "y_position": 400,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "qa-doc-2",
+      "title": "QA Test Contract (Multi-Signer)",
+      "filename": "qa_test_contract.pdf",
+      "signers": [
+        {
+          "email": "qa-signer-1@test.runtimeai.io",
+          "signing_order": 1
+        },
+        {
+          "email": "qa-signer-2@test.runtimeai.io",
+          "signing_order": 2
+        }
+      ],
+      "sender_email": "qa-sender@test.runtimeai.io"
+    }
+  ],
+  "notes": {
+    "rule": "NEVER use roshan@runtimeai.io or any production @runtimeai.io email for testing.",
+    "why": "Production emails pollute real user inboxes. Use qa-* test emails instead.",
+    "setup": "Create these test user accounts in the database before running QA tests."
+  }
+}

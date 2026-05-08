@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-shield
+  namespace: aep
+  labels:
+    app: fraud-shield
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-shield
+  template:
+    metadata:
+      labels:
+        app: fraud-shield
+    spec:
+      containers:
+        - name: fraud-shield
+          image: runtimeaicr.azurecr.io/aep/fraud-shield:latest
+          ports:
+            - containerPort: 8306
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8306"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8306
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8306
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-shield
+  namespace: aep
+spec:
+  selector:
+    app: fraud-shield
+  ports:
+    - port: 8306
+      targetPort: 8306
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraud-shield-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraud-shield
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fraud-shield-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: fraud-shield

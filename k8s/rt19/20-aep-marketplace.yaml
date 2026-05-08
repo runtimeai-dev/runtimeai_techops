@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketplace
+  namespace: aep
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8310
+    targetPort: 8310
+    protocol: TCP
+    name: http
+  selector:
+    app: marketplace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketplace
+  namespace: aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: marketplace
+  template:
+    metadata:
+      labels:
+        app: marketplace
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: marketplace
+        image: runtimeaicr.azurecr.io/aep/marketplace:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8310
+        env:
+        - name: PORT
+          value: "8310"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: MCP_GATEWAY_URL
+          value: "http://mcp-gateway.runtimeai.svc.cluster.local:8091"
+        - name: KYA_URL
+          value: "http://kya.aep.svc.cluster.local:8301"
+        - name: COST_CONTROL_URL
+          value: "http://cost-control.aep.svc.cluster.local:8302"
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8310
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8310
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - marketplace
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: marketplace-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: marketplace
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

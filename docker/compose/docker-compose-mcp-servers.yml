@@ -1,0 +1,79 @@
+# MCP-093: Docker Compose Service Definitions for MCP Server Fleet
+# Add these services to your deployment/docker-compose/docker-compose.yml
+
+# ═══════════════════════════════════════════════════════════════
+# PostgreSQL MCP Server
+# ═══════════════════════════════════════════════════════════════
+# mcp-server-postgresql:
+#     build:
+#       context: ../../RuntimeAI/mcp_gateway/mcp-servers/mcp-server-postgresql
+#       dockerfile: Dockerfile
+#     ports:
+#       - "7401:7401"
+#     environment:
+#       - DATABASE_URL=postgresql://mcp_reader:changeme-use-vault-in-prod@postgres:5432/authzion?sslmode=disable
+#       - MCP_LISTEN_ADDR=:7401
+#       - MCP_TABLE_BLOCKLIST=tenant_users,oauth_tokens,sessions,password_resets
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost:7401/health"]
+#       interval: 10s
+#       timeout: 3s
+#       start_period: 5s
+#     networks:
+#       - rtai-net
+#     restart: unless-stopped
+
+# ═══════════════════════════════════════════════════════════════
+# MCP Gateway Proxy
+# ═══════════════════════════════════════════════════════════════
+# mcp-gateway-proxy:
+#     build:
+#       context: ../../RuntimeAI/mcp_gateway/mcp-gateway
+#       dockerfile: Dockerfile
+#     ports:
+#       - "8091:8091"
+#     environment:
+#       - MCP_LISTEN_ADDR=:8091
+#     depends_on:
+#       - mcp-server-postgresql
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"]
+#       interval: 10s
+#       timeout: 3s
+#     networks:
+#       - rtai-net
+#     restart: unless-stopped
+
+# ═══════════════════════════════════════════════════════════════
+# Environment Variables for Control Plane
+# ═══════════════════════════════════════════════════════════════
+# Add to control-plane service environment:
+#   - MCP_POSTGRESQL_URL=http://mcp-server-postgresql:7401
+#   - MCP_GATEWAY_URL=http://mcp-gateway-proxy:8091
+#   - MCP_REQUEST_TIMEOUT_SECONDS=30
+#   - MCP_ALERT_WEBHOOK_URL=  # Set to Slack/Teams incoming webhook URL
+
+# ═══════════════════════════════════════════════════════════════
+# RuntimeCRM MCP Server
+# ═══════════════════════════════════════════════════════════════
+# mcp-server-runtimecrm:
+#     build:
+#       context: ../../RuntimeAI/mcp_gateway/mcp-servers/mcp-server-runtimecrm
+#       dockerfile: Dockerfile
+#     ports:
+#       - "8400:8400"
+#     environment:
+#       - RUNTIMECRM_ARH_URL=https://crm.rt19.runtimeai.io
+#       - RUNTIMECRM_API_KEY=  # Set via Vault/KMS in production
+#       - MCP_LISTEN_ADDR=:8400
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost:8400/health"]
+#       interval: 10s
+#       timeout: 3s
+#       start_period: 5s
+#     networks:
+#       - rtai-net
+#     restart: unless-stopped

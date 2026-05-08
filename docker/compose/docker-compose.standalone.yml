@@ -1,0 +1,59 @@
+version: '3.8'
+
+# MCP Gateway — Standalone Deployment
+# Usage: docker compose -f docker-compose.standalone.yml up -d
+# Access: http://localhost:8091
+
+services:
+  gateway:
+    build:
+      context: ../mcp-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8091:8091"
+    environment:
+      MCP_GATEWAY_PORT: "8091"
+      MCP_GATEWAY_HOST: "0.0.0.0"
+      MCP_GATEWAY_LOG_LEVEL: "info"
+      MCP_GATEWAY_METRICS: "true"
+      DATABASE_URL: "postgresql://postgres:mcpgateway2026@postgres:5432/mcpgateway?sslmode=disable"
+      REDIS_URL: "redis://:mcpgateway-redis@redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mcpgateway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mcpgateway2026
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../mcp-gateway/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass mcpgateway-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "mcpgateway-redis", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

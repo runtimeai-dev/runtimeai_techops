@@ -1,0 +1,149 @@
+{
+  "dashboard": {
+    "title": "AEP Node & Pod Capacity Trending",
+    "uid": "aep-capacity",
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Node Capacity (% Used)",
+        "targets": [
+          {
+            "expr": "(sum(container_memory_working_set_bytes{namespace=\"aep\"}) / (sum(kube_node_labels{namespace=\"aep\"}) * 8589934592)) * 100",
+            "legendFormat": "Memory"
+          }
+        ],
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "thresholds": "80,90,95"
+      },
+      {
+        "title": "CPU Allocation by Service",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"aep\"}[5m])) by (pod_name)",
+            "legendFormat": "{{pod_name}}"
+          }
+        ],
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "title": "Memory Allocation by Service",
+        "targets": [
+          {
+            "expr": "(container_memory_working_set_bytes{namespace=\"aep\"} / 1073741824)",
+            "legendFormat": "{{pod_name}}"
+          }
+        ],
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "title": "Node Count (Available / Total)",
+        "targets": [
+          {
+            "expr": "sum(kube_node_status_allocatable{resource=\"nodes\"})",
+            "legendFormat": "Total Nodes"
+          },
+          {
+            "expr": "sum(kube_node_status_condition{condition=\"Ready\", status=\"true\"})",
+            "legendFormat": "Ready Nodes"
+          }
+        ],
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 8}
+      },
+      {
+        "title": "HPA Status (Current / Desired Replicas)",
+        "targets": [
+          {
+            "expr": "kube_hpa_status_current_replicas{namespace=\"aep\"}",
+            "legendFormat": "{{horizontal_pod_autoscaler}} (current)"
+          },
+          {
+            "expr": "kube_hpa_status_desired_replicas{namespace=\"aep\"}",
+            "legendFormat": "{{horizontal_pod_autoscaler}} (desired)"
+          }
+        ],
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 8}
+      },
+      {
+        "title": "Pod Pending (should be 0)",
+        "targets": [
+          {
+            "expr": "sum(kube_pod_status_phase{namespace=\"aep\", phase=\"Pending\"})",
+            "legendFormat": "Pending Pods"
+          }
+        ],
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 16, "w": 6, "h": 6},
+        "thresholds": [
+          {"value": 0, "color": "green"},
+          {"value": 1, "color": "yellow"},
+          {"value": 3, "color": "red"}
+        ]
+      },
+      {
+        "title": "Pod Crash Loops (should be 0)",
+        "targets": [
+          {
+            "expr": "sum(kube_pod_container_status_ready{namespace=\"aep\", condition=\"false\"})",
+            "legendFormat": "Not Ready Pods"
+          }
+        ],
+        "type": "gauge",
+        "gridPos": {"x": 6, "y": 16, "w": 6, "h": 6},
+        "thresholds": [
+          {"value": 0, "color": "green"},
+          {"value": 1, "color": "yellow"},
+          {"value": 3, "color": "red"}
+        ]
+      },
+      {
+        "title": "Database Connection Pool %",
+        "targets": [
+          {
+            "expr": "(pg_stat_activity_count{namespace=\"aep\"} / pg_settings_max_connections{namespace=\"aep\"}) * 100",
+            "legendFormat": "Connection Pool Usage"
+          }
+        ],
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 16, "w": 6, "h": 6},
+        "thresholds": "80,90"
+      },
+      {
+        "title": "Disk Usage (etcd, postgres)",
+        "targets": [
+          {
+            "expr": "(kubelet_volume_stats_used_bytes{namespace=\"aep\"} / kubelet_volume_stats_capacity_bytes{namespace=\"aep\"}) * 100",
+            "legendFormat": "{{persistentvolumeclaim}}"
+          }
+        ],
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 16, "w": 6, "h": 6}
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "namespace",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(kube_pod_info, namespace)",
+          "current": {"text": "aep", "value": "aep"}
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "ALERTS{namespace=\"aep\", severity=\"warning\"}",
+          "name": "Warnings"
+        }
+      ]
+    }
+  }
+}

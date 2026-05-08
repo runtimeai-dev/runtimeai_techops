@@ -1,0 +1,134 @@
+# RCRM-032 §A8 — Alertmanager rules for runtimecrm/ARH.
+#
+# Built off the metrics shipped in RCRM-031 + audit hardening:
+#   arh_http_requests_total{route,method,status}
+#   arh_http_request_duration_seconds_bucket{route,method}
+#   arh_http_requests_in_flight
+#   arh_agent_queue_depth{agent}
+#   arh_sequence_scheduler_queue_depth
+#   arh_aep_circuit_state{upstream}    # 0=closed 1=half-open 2=open
+#   arh_db_pool_inuse_conns
+#   arh_db_pool_idle_conns
+#   arh_db_pool_max_conns
+#
+# Severity convention: page = pagerduty (P0/P1), ticket = Slack only (P2).
+# All rules link to runbooks/runtimecrm.md.
+
+groups:
+- name: runtimecrm-arh
+  rules:
+
+  # ── 5xx error rate ────────────────────────────────────────────────
+  - alert: RuntimeCRMHighErrorRate
+    expr: |
+      sum(rate(arh_http_requests_total{status="5xx"}[5m]))
+        / sum(rate(arh_http_requests_total[5m])) > 0.05
+    for: 5m
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "ARH 5xx rate > 5% over 5 min ({{ $value | humanizePercentage }})"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#arh-down"
+
+  - alert: RuntimeCRMServingNoTraffic
+    # 0 requests for 10 min on a service that should always have probe traffic
+    # is a strong signal something upstream of ARH is broken (ingress, Service,
+    # network policy). Distinct from "ARH crashed" which fires the 5xx alert.
+    expr: sum(rate(arh_http_requests_total[10m])) == 0
+    for: 10m
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "ARH has served zero requests for 10 min"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#arh-down"
+
+  # ── Latency ──────────────────────────────────────────────────────
+  - alert: RuntimeCRMHighLatencyP99
+    expr: |
+      histogram_quantile(0.99,
+        sum by (le, route) (rate(arh_http_request_duration_seconds_bucket[5m]))
+      ) > 1.0
+    for: 10m
+    labels: { severity: ticket, service: runtimecrm }
+    annotations:
+      summary: "ARH p99 > 1s over 10min on route {{ $labels.route }}"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#latency"
+
+  # ── DB pool ───────────────────────────────────────────────────────
+  - alert: RuntimeCRMDBPoolNearMax
+    # Pool exhaustion → request queueing → cascading timeouts. Trigger
+    # before we hit max so on-call has time to bump replicas.
+    expr: |
+      arh_db_pool_inuse_conns / clamp_min(arh_db_pool_max_conns, 1) > 0.85
+    for: 5m
+    labels: { severity: ticket, service: runtimecrm }
+    annotations:
+      summary: "ARH DB pool > 85% saturation"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#db-pool"
+
+  # ── AEP circuit breakers ──────────────────────────────────────────
+  - alert: RuntimeCRMAEPCircuitOpen
+    # Upstream AEP service is down (5 consecutive failures within 30s).
+    # ARH degrades gracefully but the user-visible feature (e.g. PII
+    # tokenize) isn't working.
+    expr: arh_aep_circuit_state == 2
+    for: 5m
+    labels: { severity: ticket, service: runtimecrm }
+    annotations:
+      summary: "AEP circuit OPEN: {{ $labels.upstream }} unreachable >5 min"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#aep-circuit"
+
+  # ── Worker queues ────────────────────────────────────────────────
+  - alert: RuntimeCRMSequenceQueueBacklog
+    # Sequence scheduler hasn't dispatched in a while. Either the worker
+    # crashed or the dispatch step is throwing. Either way, customers
+    # stop getting their sequence emails.
+    expr: arh_sequence_scheduler_queue_depth > 100
+    for: 10m
+    labels: { severity: ticket, service: runtimecrm }
+    annotations:
+      summary: "Sequence scheduler backlog > 100 for 10 min"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#sequence-backlog"
+
+  - alert: RuntimeCRMAgentQueueBacklog
+    expr: arh_agent_queue_depth > 50
+    for: 10m
+    labels: { severity: ticket, service: runtimecrm }
+    annotations:
+      summary: "Agent worker backlog > 50 for {{ $labels.agent }} (10 min)"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#agent-backlog"
+
+  # ── Pod-level (kube-state-metrics required) ───────────────────────
+  - alert: RuntimeCRMPodCrashLoop
+    expr: rate(kube_pod_container_status_restarts_total{namespace="runtimecrm"}[15m]) > 0
+    for: 5m
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "Pod {{ $labels.pod }} crash-looping in runtimecrm ns"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#crashloop"
+
+  - alert: RuntimeCRMPodNotReady
+    expr: kube_deployment_status_replicas_unavailable{namespace="runtimecrm"} > 0
+    for: 10m
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "{{ $value }} unavailable replica(s) in {{ $labels.deployment }}"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#pod-not-ready"
+
+  # ── Postgres backup CronJob (RCRM-032 §A3) ───────────────────────
+  - alert: RuntimeCRMPostgresBackupFailed
+    expr: |
+      kube_job_status_failed{namespace="rt19", job_name=~"postgres-backup-.*"} > 0
+    for: 1h
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "Postgres backup CronJob failed in last run"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#backup-failed"
+
+  - alert: RuntimeCRMPostgresBackupMissing
+    # If we go > 36h without a successful backup, page. CronJob runs daily
+    # at 03:15 UTC; this gives one full retry window before we wake on-call.
+    expr: |
+      time() - max(kube_job_status_completion_time{namespace="rt19", job_name=~"postgres-backup-.*"}) > 36 * 3600
+    labels: { severity: page, service: runtimecrm }
+    annotations:
+      summary: "No successful postgres-backup run in >36h"
+      runbook: "https://runtimeai-enterprise/runbooks/runtimecrm.md#backup-missing"

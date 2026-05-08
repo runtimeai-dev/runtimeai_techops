@@ -1,0 +1,167 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kya-alerts
+  namespace: aep
+spec:
+  groups:
+  - name: kya.rules
+    interval: 30s
+    rules:
+    # Alert on KYA score drops below critical threshold (40 = quarantined)
+    - alert: KYAScoreBelowCritical
+      expr: |
+        increase(kya_score_drop_total[5m]) > 0
+        and on (agent_id) kya_agent_score < 40
+      for: 1m
+      labels:
+        severity: critical
+        service: kya
+      annotations:
+        summary: "KYA score dropped to critical ({{ $value }})"
+        description: "Agent {{ $labels.agent_id }} KYA score is now quarantined (<40). Investigate immediately."
+        runbook_url: "https://runbooks.internal/kya/quarantined-agent"
+
+    # Alert on agent offboarding
+    - alert: KYAAgentOffboarded
+      expr: increase(kya_agent_offboarded_total[5m]) > 0
+      for: 30s
+      labels:
+        severity: warning
+        service: kya
+      annotations:
+        summary: "Agent offboarded"
+        description: "Agent has been offboarded. Check audit log for reason."
+        runbook_url: "https://runbooks.internal/kya/offboarding"
+
+    # Alert on high manifest submission failures
+    - alert: KYAManifestSubmissionFailure
+      expr: |
+        rate(kya_manifest_submitted_total{status="invalid"}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: warning
+        service: kya
+      annotations:
+        summary: "High manifest submission failure rate"
+        description: "{{ $value | humanizePercentage }} of manifests are being rejected. Check validation rules."
+        runbook_url: "https://runbooks.internal/kya/manifest-validation"
+
+    # Alert on attestation verification failures
+    - alert: KYAAttestationVerificationFailure
+      expr: |
+        rate(kya_attestation_created_total{verified="false"}[5m]) > 0.2
+      for: 2m
+      labels:
+        severity: warning
+        service: kya
+      annotations:
+        summary: "High attestation verification failure rate"
+        description: "{{ $value | humanizePercentage }} of attestations failing verification. Check Bot-CA."
+        runbook_url: "https://runbooks.internal/kya/bot-ca-issues"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kya-runbooks
+  namespace: aep
+data:
+  quarantined-agent.md: |
+    # KYA Agent Quarantined Runbook
+
+    **Alert**: KYAScoreBelowCritical
+    **Condition**: KYA score < 40
+    **Severity**: CRITICAL
+
+    ## Immediate Actions
+    1. Identify the agent: `kubectl logs -n aep deployment/kya | grep "agent_id=XXX"`
+    2. Check audit trail: `SELECT * FROM kya_audit_log WHERE target_id='agent_id' ORDER BY created_at DESC LIMIT 10;`
+    3. Review KYA score breakdown: `GET /api/v1/kya/verify/{agent_id}`
+    4. Examine recent violations: `SELECT * FROM kya_score_events WHERE agent_id='agent_id' ORDER BY created_at DESC LIMIT 20;`
+
+    ## Investigation
+    - **Score factor breakdown**: Credential health? Chain depth? Scope compliance?
+    - **Recent activity**: Did the agent exceed scope limits? Trigger behavioral anomalies?
+    - **Bot-CA status**: Check if Bot-CA issued credentials or if they expired
+
+    ## Resolution
+    - If false positive: update KYA scoring weights
+    - If genuine: initiate offboarding via `POST /api/v1/kya/agents/{id}/offboard`
+    - If temporary: set score recovery plan (e.g., incident_resolved event)
+
+    ## Recovery
+    - Document the incident in `incidents/` directory
+    - Add controls to prevent recurrence (e.g., enhanced monitoring, stricter scope enforcement)
+    - Update runbook if pattern changes
+
+  offboarding.md: |
+    # KYA Agent Offboarding Runbook
+
+    **Alert**: KYAAgentOffboarded
+    **Condition**: Agent offboarding event triggered
+    **Severity**: WARNING
+
+    ## Immediate Actions
+    1. Get agent details: `GET /api/v1/kya/agents/{agent_id}`
+    2. Verify offboarding reason in audit: `SELECT metadata FROM kya_audit_log WHERE event_type='agent_offboarded' AND target_id='{agent_id}';`
+    3. Confirm credential revocation: `SELECT revoked_at FROM kya_credentials WHERE agent_id='{agent_id}';`
+    4. Check downstream revocations:
+       - NHI: `GET /api/v1/nhi/agents/{agent_id}` (should return 404)
+       - Bot-CA: `GET /api/v1/bot-ca/agents/{agent_id}` (should return revoked)
+       - IdentityDNS: `GET /api/v1/dns/agents/{agent_id}` (should return 404)
+
+    ## Validation
+    - Verify all downstream services acknowledged revocation
+    - Check no residual connections in flow logs
+    - Confirm no pending transactions
+
+    ## Cleanup
+    - Remove agent from any active deployments
+    - Revoke API keys if any were issued
+    - Notify dependent services
+
+  manifest-validation.md: |
+    # KYA Manifest Validation Failure Runbook
+
+    **Alert**: KYAManifestSubmissionFailure
+    **Condition**: >10% of submissions rejected
+    **Severity**: WARNING
+
+    ## Immediate Actions
+    1. Check recent validation errors: `grep "validation failed" /var/log/kya-service.log | tail -20`
+    2. Identify common failure patterns: Which fields are failing? (schema_version, name, declared_tools?)
+    3. Verify validation rules haven't changed: `kubectl describe configmap kya-config`
+
+    ## Investigation
+    - Are clients using outdated schema versions?
+    - Have tool names changed in the marketplace?
+    - Are data scope definitions invalid?
+
+    ## Resolution
+    - If validation rules are too strict: relax constraints in repository ValidateBotManifest()
+    - If clients are out of date: notify them to update schema version
+    - If tool registry changed: sync marketplace definitions
+
+  bot-ca-issues.md: |
+    # KYA Bot-CA Attestation Failure Runbook
+
+    **Alert**: KYAAttestationVerificationFailure
+    **Condition**: >20% of attestations failing verification
+    **Severity**: WARNING
+
+    ## Immediate Actions
+    1. Check Bot-CA health: `GET /healthz` on BOT_CA_URL
+    2. Verify signing key exists: `SELECT signing_key FROM kya_vendors LIMIT 1;`
+    3. Test manual verification: `POST /api/v1/kya/agents/{id}/attest` with known-good signature
+    4. Check Bot-CA logs: `kubectl logs -n rt19 deployment/bot-ca`
+
+    ## Investigation
+    - Is Bot-CA accepting new attestations?
+    - Have signing keys expired or been rotated?
+    - Is the verification service reachable?
+
+    ## Resolution
+    - If Bot-CA is down: escalate to Platform team
+    - If keys expired: rotate via `POST /api/v1/bot-ca/keys/rotate`
+    - If network issue: check firewall rules and DNS resolution

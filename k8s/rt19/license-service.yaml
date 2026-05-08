@@ -1,0 +1,86 @@
+# OPER_RT19-090 — license-service deployed to rt19 cluster.
+# Secrets are created out-of-band via:
+#   kubectl create secret generic license-service-secrets -n rt19 \
+#     --from-literal=DATABASE_URL=... \
+#     --from-literal=LICENSE_PRIVATE_KEY_HEX=... \
+#     --from-literal=LICENSE_ADMIN_SECRET=... \
+#     --from-literal=LICENSE_CP_SERVICE_SECRET=... \
+#     --from-literal=LICENSE_LANDING_SERVICE_SECRET=...
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: license-service
+  namespace: rt19
+  labels: { app: license-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: license-service }
+  template:
+    metadata:
+      labels: { app: license-service }
+    spec:
+      containers:
+        - name: license-service
+          image: runtimeaicr.azurecr.io/license-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8220
+          env:
+            - { name: PORT, value: "8220" }
+            - { name: LICENSE_CURRENT_KID, value: "rtai-license-v1" }
+          envFrom:
+            - secretRef:
+                name: license-service-secrets
+          readinessProbe:
+            httpGet: { path: /api/v1/pubkey, port: 8220 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/v1/pubkey, port: 8220 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: license-service
+  namespace: rt19
+spec:
+  selector: { app: license-service }
+  ports:
+    - name: http
+      port: 8220
+      targetPort: 8220
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: license-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [license.runtimeai.io]
+      secretName: license-runtimeai-tls
+  rules:
+    - host: license.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: license-service
+                port:
+                  number: 8220

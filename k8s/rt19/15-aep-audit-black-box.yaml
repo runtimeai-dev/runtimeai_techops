@@ -1,0 +1,133 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-black-box
+  namespace: aep
+  labels:
+    app: audit-black-box
+    service: audit-black-box
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8303
+    targetPort: 8303
+    protocol: TCP
+    name: http
+  selector:
+    app: audit-black-box
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-black-box
+  namespace: aep
+  labels:
+    app: audit-black-box
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: audit-black-box
+  template:
+    metadata:
+      labels:
+        app: audit-black-box
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: audit-black-box
+        image: runtimeaicr.azurecr.io/aep/audit-black-box:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8303
+          name: http
+        env:
+        - name: PORT
+          value: "8303"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: PQ_SIGN_URL
+          value: "http://pq-sign.pqdata.svc.cluster.local:8206"
+        - name: PQ_SIGN_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: pq-jwt-secret
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8303
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8303
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - audit-black-box
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: audit-black-box-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: audit-black-box
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

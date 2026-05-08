@@ -1,0 +1,73 @@
+# NOTE: pii-shield-stub and kya-stub are for local dev ONLY.
+# Integration tests use real AEP services (agentic_platform).
+
+services:
+  arh:
+    build: ./services/arh
+    ports:
+      - "8315:8315"
+    env_file: services/arh/.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  console:
+    build: ./apps/console
+    ports:
+      - "3200:3200"
+    depends_on:
+      - arh
+    restart: unless-stopped
+
+  landing:
+    build: ./apps/landing
+    ports:
+      - "5175:80"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: runtimecrm
+      POSTGRES_USER: arh_app
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arh_app -d runtimecrm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # LOCAL DEV STUB: echoes PII tokens back. Replace with real AEP pii-shield for integration tests.
+  pii-shield:
+    image: mockserver/mockserver:5.15.0
+    ports:
+      - "8304:1080"
+    restart: unless-stopped
+
+  # LOCAL DEV STUB: returns KYA score=80. Replace with real AEP kya for integration tests.
+  kya:
+    image: mockserver/mockserver:5.15.0
+    ports:
+      - "8301:1080"
+    restart: unless-stopped
+
+  auth-service:
+    image: runtimeaicr.azurecr.io/auth-service:20260430-0015
+    ports:
+      - "8097:8097"
+    restart: unless-stopped
+
+  vendor-wrapper:
+    image: runtimeaicr.azurecr.io/vendor-wrapper:latest
+    ports:
+      - "8103:8103"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

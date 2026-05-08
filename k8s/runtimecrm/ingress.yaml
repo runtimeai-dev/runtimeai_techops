@@ -1,0 +1,70 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: runtimecrm-ingress
+  namespace: runtimecrm
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  tls:
+    - hosts:
+        - runtimecrm.com
+        - www.runtimecrm.com
+        - app.runtimecrm.com
+        - api.runtimecrm.com
+        - track.runtimecrm.com
+      secretName: runtimecrm-tls
+  rules:
+    - host: runtimecrm.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: landing
+                port:
+                  number: 80
+    - host: www.runtimecrm.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: landing
+                port:
+                  number: 80
+    - host: app.runtimecrm.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: console
+                port:
+                  number: 80
+    - host: api.runtimecrm.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: arh
+                port:
+                  number: 8315
+    - host: track.runtimecrm.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: arh
+                port:
+                  number: 8315

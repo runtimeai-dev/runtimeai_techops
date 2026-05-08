@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aep-config
+  namespace: aep
+data:
+  # Service URLs — internal cluster DNS
+  KYA_URL: "http://kya:8301"
+  COST_CONTROL_URL: "http://cost-control:8302"
+  AUDIT_URL: "http://audit-black-box:8303"
+  PII_SHIELD_URL: "http://pii-shield:8304"
+  OBSERVABILITY_URL: "http://observability:8305"
+  FRAUD_SHIELD_URL: "http://fraud-shield:8306"
+  MEMORY_VAULT_URL: "http://memory-vault:8307"
+  COMMERCE_RAILS_URL: "http://commerce-rails:8308"
+  ACP_URL: "http://commerce-protocol:8309"
+  MARKETPLACE_URL: "http://marketplace:8310"
+  DEVELOPER_HUB_URL: "http://developer-hub:8311"
+  CONTRACT_MANAGER_URL: "http://contract-manager:8312"
+  PROCUREMENT_HUB_URL: "http://procurement-hub:8313"
+  FINANCE_RAIL_URL: "http://finance-rail:8314"
+
+  # Cross-repo service URLs
+  QUANTOSIGN_URL: "http://quantosign.rt19.svc.cluster.local:8095"
+  MCP_GATEWAY_URL: "http://mcp-gateway.rt19.svc.cluster.local:8091"
+  BOT_CA_URL: "http://bot-ca.rt19.svc.cluster.local:8099"
+  QUANTUM_VAULT_URL: "http://quantum-vault.pqdata.svc.cluster.local:8200"
+  PQ_SIGN_URL: "http://pq-sign.pqdata.svc.cluster.local:8206"
+
+  # KYA Phase 2 — Bot Governance (OPER_RT19-102)
+  NHI_URL: "http://identity-fabric.rt19.svc.cluster.local:8084"
+  IDENTITY_DNS_URL: "http://identity-dns.rt19.svc.cluster.local:8053"
+  AUDIT_BLACK_BOX_URL: "http://audit-black-box.aep.svc.cluster.local:8303"
+  CONTROL_PLANE_URL: ""
+  ALERT_WEBHOOK_URL: ""
+
+  # Rate limiting
+  AEP_RATE_LIMIT: "1000"
+  MAX_REQUEST_BODY_BYTES: "1048576"
+
+  # Commerce
+  MARKETPLACE_CUT_PCT: "10"
+  PO_APPROVAL_THRESHOLD_USD: "1000"
+  HIGH_VALUE_PAYMENT_THRESHOLD_USD: "10000"
+  THREE_WAY_MATCH_QTY_TOLERANCE_PCT: "2"
+
+  # Auth — HS256 with JWT_SECRET from aep-secrets is the active scheme.
+  # AUTH_JWKS_URL is intentionally blank: when set, KYA's middleware
+  # prefers JWKS over the HS256 fallback, but the aep auth-service mints
+  # HS256 tokens, not the rt19 auth-svc ES256 ones — so a non-empty value
+  # caused every product call to 401. Re-enable only after the aep
+  # auth-service publishes its own /.well-known/jwks.json.
+  AUTH_JWKS_URL: ""
+
+  # Feature gates.
+  # J12: ENFORCE_JWT=true — JWT_SECRET="" + AUTH_JWKS_URL set → AEP validates ES256 via JWKS.
+  # ARH forwards user JWT for API calls; mints service tokens (via auth-svc /internal/test-token)
+  # for agent worker → AEP calls (ServiceTokenManager with AUTH_ADMIN_SECRET).
+  ENFORCE_JWT: "true"
+  ENFORCE_BOT_CA: "true"
+  ENFORCE_KYA: "true"
+  ENFORCE_STRIPE: "true"

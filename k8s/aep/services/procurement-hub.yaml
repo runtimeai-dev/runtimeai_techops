@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: procurement-hub
+  namespace: aep
+  labels:
+    app: procurement-hub
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: procurement-hub
+  template:
+    metadata:
+      labels:
+        app: procurement-hub
+    spec:
+      containers:
+        - name: procurement-hub
+          image: runtimeaicr.azurecr.io/aep/procurement-hub:latest
+          ports:
+            - containerPort: 8313
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8313"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8313
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8313
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: acr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: procurement-hub
+  namespace: aep
+spec:
+  selector:
+    app: procurement-hub
+  ports:
+    - port: 8313
+      targetPort: 8313
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: procurement-hub-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: procurement-hub

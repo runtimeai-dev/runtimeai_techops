@@ -1,0 +1,143 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-vault
+  namespace: aep
+  labels:
+    app: memory-vault
+    service: memory-vault
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8307
+    targetPort: 8307
+    protocol: TCP
+    name: http
+  selector:
+    app: memory-vault
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-vault
+  namespace: aep
+  labels:
+    app: memory-vault
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: memory-vault
+  template:
+    metadata:
+      labels:
+        app: memory-vault
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: memory-vault
+        image: runtimeaicr.azurecr.io/aep/memory-vault:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8307
+          name: http
+        env:
+        - name: PORT
+          value: "8307"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: QUANTUMVAULT_URL
+          value: "http://quantumvault.pqdata.svc.cluster.local:8200"
+        - name: QUANTUMVAULT_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: qv-jwt-secret
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: openai-api-key
+              optional: true
+        - name: EMBEDDING_MODEL
+          value: "text-embedding-3-small"
+        - name: ENFORCE_EMBEDDINGS
+          value: "false"
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1200m
+            memory: 768Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8307
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8307
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - memory-vault
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: memory-vault-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: memory-vault
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

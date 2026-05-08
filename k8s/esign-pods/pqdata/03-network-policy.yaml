@@ -1,0 +1,52 @@
+# OPER_RT19-062: NetworkPolicy for pqdata namespace
+# Only esign-service pods in rt01 and rt02 namespaces may connect to QuantumVault
+# and PQ Policy Engine. All other ingress is denied.
+# Satisfies OPER_RT19-060 A6 requirement.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pqdata-ingress-allow-esign-pods
+  namespace: pqdata
+spec:
+  podSelector: {}  # applies to all pods in pqdata namespace
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow from rt01 namespace (esign-service pods only)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt01
+          podSelector:
+            matchLabels:
+              app: esign-service
+      ports:
+        - port: 8200  # QuantumVault HTTPS
+          protocol: TCP
+        - port: 8083  # PQ Policy Engine HTTP
+          protocol: TCP
+        - port: 8087  # PQ Sign HTTP (if co-located)
+          protocol: TCP
+
+    # Allow from rt02 namespace (esign-service pods only)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rt02
+          podSelector:
+            matchLabels:
+              app: esign-service
+      ports:
+        - port: 8200
+          protocol: TCP
+        - port: 8083
+          protocol: TCP
+        - port: 8087
+          protocol: TCP
+
+    # Allow intra-namespace traffic (quantumvault → quantumvault-postgres, etc.)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pqdata

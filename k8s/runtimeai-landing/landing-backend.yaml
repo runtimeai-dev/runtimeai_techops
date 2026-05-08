@@ -1,0 +1,130 @@
+# OPER_RT19-094 §6 — committed manifest for runtimeai-landing/landing-backend.
+#
+# Previously the deployment was bootstrapped via `kubectl set env` and never
+# checked into git, so any future re-apply of a fresh manifest would silently
+# drop CORS_ORIGINS and break the trial form (§4a.1). This file persists the
+# live spec; secret values come from envFrom/secretRef bulk imports
+# (landing-db-secret + landing-app-secret), so plaintext credentials never
+# land in this repo.
+#
+# Apply:
+#   kubectl apply -f deployment/scripts/runtimeai-landing/landing-backend.yaml
+#
+# Plaintext SMTP/CRM/CONTROL_PLANE secrets that were live-patched in earlier
+# deploys remain on the cluster as inline env until they're migrated into
+# landing-app-secret. To migrate one in-place:
+#   kubectl create secret generic landing-app-secret -n runtimeai-landing \
+#     --from-literal=SMTP_PASS='...' --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl set env deployment/landing-backend -n runtimeai-landing SMTP_PASS-
+# This manifest declares the inline env as REQUIRED-VIA-SECRETREF placeholders
+# so contract test §4b.4 fails loud if someone re-applies it without
+# completing the secret migration.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: landing-backend
+  namespace: runtimeai-landing
+  labels:
+    app: landing-backend
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: landing-backend
+  template:
+    metadata:
+      labels:
+        app: landing-backend
+    spec:
+      containers:
+      - name: landing-backend
+        image: runtimeaicr.azurecr.io/landing-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8082
+        env:
+        # ── Non-secret config (safe to commit) ──────────────────────
+        - name: SMTP_HOST
+          value: "smtp.sendgrid.net"
+        - name: SMTP_PORT
+          value: "587"
+        - name: SMTP_USER
+          value: "apikey"
+        - name: SMTP_FROM
+          value: "noreply@runtimeai.io"
+        - name: SUPPORT_EMAIL
+          value: "support@runtimeai.io"
+        - name: TRIAL_MAGIC_LINK_BASE_URL
+          value: "https://trial.runtimeai.io"
+        - name: CONTROL_PLANE_URL
+          value: "https://api.rt19.runtimeai.io"
+        - name: LICENSE_SERVICE_URL
+          value: "https://license.runtimeai.io"
+        - name: CRM_BASE_URL
+          value: "http://arh.runtimecrm.svc.cluster.local:8315"
+        - name: CRM_TENANT_ID
+          value: "runtimeai_corp"
+        # OPER_RT19-094 §4a.1 + §4a.QA F5 — without this env var the trial
+        # form 502s cross-origin from trial.runtimeai.io. Contract test §4b.4
+        # fails if it's missing. Expanded to cover every console subdomain
+        # where trial-banner.js will be embedded so the /api/v1/me fetch
+        # passes preflight.
+        - name: CORS_ORIGINS
+          value: "https://trial.runtimeai.io,https://runtimeai.io,https://www.runtimeai.io,https://app.rt19.runtimeai.io,https://admin.runtimeai.io,https://nhi.rt19.runtimeai.io,https://crm.rt19.runtimeai.io,https://esign.rt19.runtimeai.io,https://cloud.rt19.runtimeai.io,https://kinetic.rt19.runtimeai.io,https://qutonomous.com,https://app.qutonomous.com,https://runtimecrm.com,https://app.runtimecrm.com,https://quantosign.com"
+        # ── Secrets via envFrom bulk import ─────────────────────────
+        # landing-db-secret  → DATABASE_URL (created at bootstrap)
+        # landing-app-secret → SMTP_PASS, API_SECRET, CONTROL_PLANE_ADMIN_SECRET,
+        #                      LICENSE_LANDING_SERVICE_SECRET, CRM_API_KEY,
+        #                      CRM_WEBHOOK_SECRET
+        # If any of those are missing from landing-app-secret today (they
+        # were live-patched as inline env), populate them via:
+        #   kubectl edit secret landing-app-secret -n runtimeai-landing
+        # then drop the inline env via:
+        #   kubectl set env deployment/landing-backend -n runtimeai-landing <NAME>-
+        envFrom:
+        - secretRef:
+            name: landing-db-secret
+        - secretRef:
+            name: landing-app-secret
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 384Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: landing-backend
+  namespace: runtimeai-landing
+  labels:
+    app: landing-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: landing-backend
+  ports:
+  - port: 8082
+    targetPort: 8081
+    protocol: TCP

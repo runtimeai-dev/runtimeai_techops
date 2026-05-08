@@ -1,0 +1,68 @@
+{
+  "annotations": { "list": [] },
+  "title": "MCP Gateway",
+  "uid": "mcp-gateway",
+  "schemaVersion": 38,
+  "version": 1,
+  "tags": ["mcp", "gateway", "OPER_RT19-084"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tool calls / sec by outcome",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(mcp_call_total[1m]))" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "p99 latency by server",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (server, le) (rate(mcp_call_latency_seconds_bucket[5m])))" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Servers registered vs stale",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 6 },
+      "targets": [
+        { "expr": "mcp_servers_registered", "legendFormat": "registered" },
+        { "expr": "mcp_servers_stale", "legendFormat": "stale" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Rate-limit blocks / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 8, "w": 9, "h": 6 },
+      "targets": [
+        { "expr": "sum by (tool) (rate(mcp_rate_limit_blocked_total[5m]))" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Audit-chain breaks (P0)",
+      "type": "stat",
+      "gridPos": { "x": 15, "y": 8, "w": 9, "h": 6 },
+      "targets": [
+        { "expr": "mcp_audit_chain_breaks_total" }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] } }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Billable calls — by plan",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "targets": [
+        { "expr": "sum by (plan) (rate(mcp_call_billable_total[5m]))" }
+      ]
+    }
+  ]
+}

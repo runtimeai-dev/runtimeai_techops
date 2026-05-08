@@ -1,0 +1,565 @@
+---
+# AEP RBAC and Network Policies
+# Purpose: Enforce least-privilege access and network segmentation
+
+# Service Accounts (one per service)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kya-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cost-control-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: audit-black-box-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pii-shield-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observability-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fraud-shield-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: memory-vault-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: commerce-rails-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: commerce-protocol-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: marketplace-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer-hub-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: contract-manager-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: procurement-hub-sa
+  namespace: aep
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: finance-rail-sa
+  namespace: aep
+
+---
+# Roles: Each service can only read its own secrets and write logs/metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aep-service-role
+  namespace: aep
+rules:
+# Read own service secret
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+  resourceNames: ["aep-secrets", "aep-postgres-secret"]
+# Read ConfigMaps
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+# Write logs (via standard output)
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "create"]
+
+---
+# RoleBindings: Bind all service accounts to the role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kya-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: kya-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cost-control-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: cost-control-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: audit-black-box-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: audit-black-box-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pii-shield-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: pii-shield-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: observability-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: observability-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fraud-shield-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: fraud-shield-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: memory-vault-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: memory-vault-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: commerce-rails-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: commerce-rails-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: commerce-protocol-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: commerce-protocol-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: marketplace-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: marketplace-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-hub-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: developer-hub-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: contract-manager-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: contract-manager-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: procurement-hub-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: procurement-hub-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: finance-rail-role-binding
+  namespace: aep
+subjects:
+- kind: ServiceAccount
+  name: finance-rail-sa
+  namespace: aep
+roleRef:
+  kind: Role
+  name: aep-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Network Policies: Restrict inter-service communication
+# Default: Deny all ingress (except from ingress controller)
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-default-deny-ingress
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Allow ingress traffic from ingress controller (gateway) on port 8xxx
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-allow-from-ingress
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8301
+    - protocol: TCP
+      port: 8302
+    - protocol: TCP
+      port: 8303
+    - protocol: TCP
+      port: 8304
+    - protocol: TCP
+      port: 8305
+    - protocol: TCP
+      port: 8306
+    - protocol: TCP
+      port: 8307
+    - protocol: TCP
+      port: 8308
+    - protocol: TCP
+      port: 8309
+    - protocol: TCP
+      port: 8310
+    - protocol: TCP
+      port: 8311
+    - protocol: TCP
+      port: 8312
+    - protocol: TCP
+      port: 8313
+    - protocol: TCP
+      port: 8314
+
+---
+# Cost Control can call Audit Black Box (for logging transactions)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cost-control-to-audit
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app: audit-black-box
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cost-control
+    ports:
+    - protocol: TCP
+      port: 8303
+
+---
+# Finance Rail can call Memory Vault (for context enrichment)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: finance-to-memory-vault
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app: memory-vault
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: finance-rail
+    ports:
+    - protocol: TCP
+      port: 8307
+
+---
+# Commerce Rails can call PII Shield (for PII tokenization)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: commerce-to-pii-shield
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app: pii-shield
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: commerce-rails
+    - podSelector:
+        matchLabels:
+          app: finance-rail
+    ports:
+    - protocol: TCP
+      port: 8304
+
+---
+# Fraud Shield can call Cost Control (for budget checks)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fraud-to-cost-control
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app: cost-control
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: fraud-shield
+    ports:
+    - protocol: TCP
+      port: 8302
+
+---
+# Allow all egress by default (pods can call external services)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-allow-all-egress
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector: {}
+  - to:
+    - podSelector: {}
+
+---
+# Allow DNS queries (port 53)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aep-allow-dns
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# External access to QuantumVault (pq_data_platform namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: memory-vault-to-quantumvault
+  namespace: aep
+spec:
+  podSelector:
+    matchLabels:
+      app: memory-vault
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: pqdata
+    ports:
+    - protocol: TCP
+      port: 8200
+
+---
+# Observability service can scrape metrics from all AEP services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-scrape
+  namespace: aep
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: observability
+    ports:
+    - protocol: TCP
+      port: 9090  # Prometheus metrics port

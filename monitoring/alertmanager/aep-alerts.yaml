@@ -1,0 +1,233 @@
+---
+# AEP AlertManager Rules
+# Purpose: Alert on AEP production incidents
+# Targets: Slack + PagerDuty
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aep-alerts
+  namespace: aep
+spec:
+  groups:
+  - name: aep.rules
+    interval: 30s
+    rules:
+    # Pod CrashLoopBackOff (CRITICAL)
+    - alert: AEPPodCrashLoopBackOff
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="aep"}[15m]) > 3
+      for: 5m
+      labels:
+        severity: critical
+        component: aep
+      annotations:
+        summary: "Pod {{ $labels.pod }} is in CrashLoopBackOff"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in 15 minutes. Check logs: kubectl logs {{ $labels.pod }} -n aep. Runbook: deployment/runbooks/aep-incidents.md#incident-1"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-1"
+
+    # High Error Rate (HIGH)
+    - alert: AEPHighErrorRate
+      expr: |
+        (sum(rate(http_requests_total{namespace="aep",status=~"5.."}[5m])) by (service)) /
+        (sum(rate(http_requests_total{namespace="aep"}[5m])) by (service)) > 0.01
+      for: 5m
+      labels:
+        severity: high
+        component: aep
+      annotations:
+        summary: "AEP service {{ $labels.service }} error rate > 1%"
+        description: "Service {{ $labels.service }} is returning errors for >1% of requests. Error rate: {{ $value | humanizePercentage }}. Check logs: kubectl logs -l app={{ $labels.service }} -n aep --tail=200. Runbook: deployment/runbooks/aep-incidents.md#incident-2"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-2"
+
+    # High P99 Latency (MEDIUM)
+    - alert: AEPHighP99Latency
+      expr: |
+        histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="aep"}[5m])) by (service, le)) > 0.5
+      for: 10m
+      labels:
+        severity: medium
+        component: aep
+      annotations:
+        summary: "AEP service {{ $labels.service }} p99 latency > 500ms"
+        description: "Service {{ $labels.service }} p99 latency is {{ $value | humanizeDuration }}. Check Jaeger traces (kubectl port-forward -n aep svc/jaeger 16686:16686). Runbook: deployment/runbooks/aep-incidents.md#incident-3"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-3"
+
+    # High Memory Usage (MEDIUM)
+    - alert: AEPHighMemoryUsage
+      expr: |
+        (container_memory_usage_bytes{namespace="aep"} / container_spec_memory_limit_bytes{namespace="aep"}) > 0.85
+      for: 5m
+      labels:
+        severity: medium
+        component: aep
+      annotations:
+        summary: "Pod {{ $labels.pod }} memory usage > 85%"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is using {{ $value | humanizePercentage }} of memory limit. May be approaching OOMKill. Runbook: deployment/runbooks/aep-incidents.md#incident-4"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-4"
+
+    # High CPU Usage (MEDIUM)
+    - alert: AEPHighCPUUsage
+      expr: |
+        (rate(container_cpu_usage_seconds_total{namespace="aep"}[5m]) / container_spec_cpu_quota{namespace="aep"}) > 0.9
+      for: 10m
+      labels:
+        severity: medium
+        component: aep
+      annotations:
+        summary: "Pod {{ $labels.pod }} CPU usage > 90%"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} CPU is at {{ $value | humanizePercentage }} of limit. Consider scaling up. Check: kubectl top pods -n aep"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-3"
+
+    # JWT Authentication Failures (HIGH)
+    - alert: AEPJWTAuthFailures
+      expr: |
+        increase(http_requests_total{namespace="aep",status="401"}[5m]) > 10
+      for: 5m
+      labels:
+        severity: high
+        component: aep
+      annotations:
+        summary: "AEP JWT authentication failures spike"
+        description: "{{ $value }} JWT auth failures in last 5 minutes. Check JWT secret rotation and token validation. Runbook: deployment/runbooks/aep-incidents.md#incident-5"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-5"
+
+    # Budget Alert (HIGH)
+    - alert: AEPBudgetExceeded
+      expr: |
+        aep_cost_control_budget_remaining_usd < 0
+      for: 1m
+      labels:
+        severity: high
+        component: cost-control
+      annotations:
+        summary: "AEP Cost Control: Tenant {{ $labels.tenant_id }} budget exceeded"
+        description: "Tenant {{ $labels.tenant_id }} has exceeded monthly budget. Current overrun: ${{ $value | abs }}. Runbook: deployment/runbooks/aep-incidents.md#incident-6"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-6"
+
+    # Cost Spike (MEDIUM)
+    - alert: AEPCostSpike
+      expr: |
+        increase(aep_cost_control_cost_usd_total[1h]) / (increase(aep_cost_control_cost_usd_total[24h]) / 24) > 5
+      for: 10m
+      labels:
+        severity: medium
+        component: cost-control
+      annotations:
+        summary: "AEP Cost spike for tenant {{ $labels.tenant_id }}"
+        description: "Last hour cost is 5x higher than daily average. Investigate agent activity. Runbook: deployment/runbooks/aep-incidents.md#incident-6"
+        runbook_url: "https://github.com/runtimeai-dev/runtimeai-enterprise/blob/dev/deployment/runbooks/aep-incidents.md#incident-6"
+
+    # PII Shield Tokenization Errors (MEDIUM)
+    - alert: AEPPIIShieldErrors
+      expr: |
+        increase(pii_shield_tokenization_errors_total{namespace="aep"}[5m]) > 5
+      for: 5m
+      labels:
+        severity: medium
+        component: pii-shield
+      annotations:
+        summary: "PII Shield tokenization errors detected"
+        description: "{{ $value }} PII tokenization errors in last 5 minutes. Sensitive data may not be protected. Check: kubectl logs -l app=pii-shield -n aep --tail=100"
+
+    # Fraud Shield Detection Rate (INFO)
+    - alert: AEPFraudShieldHighDetectionRate
+      expr: |
+        increase(fraud_shield_detections_total{namespace="aep"}[1h]) / increase(fraud_shield_transactions_total{namespace="aep"}[1h]) > 0.05
+      for: 15m
+      labels:
+        severity: info
+        component: fraud-shield
+      annotations:
+        summary: "Fraud Shield detection rate > 5%"
+        description: "{{ $value | humanizePercentage }} of transactions flagged as potential fraud. May warrant manual review."
+
+    # Database Connection Pool Exhaustion (HIGH)
+    - alert: AEPDBConnectionPoolExhausted
+      expr: |
+        (pg_stat_activity_count{namespace="aep"} / pg_settings_max_connections{namespace="aep"}) > 0.9
+      for: 5m
+      labels:
+        severity: high
+        component: database
+      annotations:
+        summary: "AEP database connection pool at {{ $value | humanizePercentage }}"
+        description: "Database connection pool nearly exhausted. Active connections: {{ $value }}. Consider scaling postgres or closing idle connections."
+
+    # Service Replica Count Low (MEDIUM)
+    - alert: AEPLowReplicaCount
+      expr: |
+        kube_deployment_status_replicas_available{namespace="aep"} < 2
+      for: 10m
+      labels:
+        severity: medium
+        component: aep
+      annotations:
+        summary: "Service {{ $labels.deployment }} has < 2 replicas"
+        description: "Service {{ $labels.deployment }} is not highly available (< 2 replicas). Manually scale or check HPA status: kubectl describe hpa {{ $labels.deployment }} -n aep"
+
+---
+# AlertManager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: aep
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: "${SLACK_WEBHOOK_URL}"
+
+    route:
+      receiver: 'aep-slack'
+      group_by: ['alertname', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      routes:
+      # Critical alerts go to PagerDuty + Slack
+      - match:
+          severity: critical
+        receiver: 'aep-pagerduty'
+        continue: true
+      # High alerts go to Slack
+      - match:
+          severity: high
+        receiver: 'aep-slack-high'
+
+    receivers:
+    - name: 'aep-slack'
+      slack_configs:
+      - channel: '#aep-alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+    - name: 'aep-slack-high'
+      slack_configs:
+      - channel: '#aep-critical'
+        title: '🚨 {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nRunbook: {{ .Annotations.runbook_url }}{{ end }}'
+        send_resolved: true
+        color: 'danger'
+
+    - name: 'aep-pagerduty'
+      pagerduty_configs:
+      - service_key: "${PAGERDUTY_SERVICE_KEY}"
+        description: '{{ .GroupLabels.alertname }}'
+        client: 'Prometheus'
+        client_url: 'http://prometheus.aep:9090'
+
+---
+# Slack Secret (reference only - apply separately)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-slack-secret
+  namespace: aep
+type: Opaque
+stringData:
+  slack-webhook: "${SLACK_WEBHOOK_URL}"
+  pagerduty-key: "${PAGERDUTY_SERVICE_KEY}"

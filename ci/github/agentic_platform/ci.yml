@@ -1,0 +1,67 @@
+name: CI — Agentic Platform
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  go-build-test:
+    name: Go — Build & Test (all services + SDK)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - services/kya
+          - services/cost-control
+          - services/audit-black-box
+          - services/pii-shield
+          - services/observability
+          - services/fraud-shield
+          - services/memory-vault
+          - services/commerce-rails
+          - services/commerce-protocol
+          - services/developer-hub
+          - services/contract-manager
+          - services/procurement-hub
+          - services/finance-rail
+          - services/marketplace
+          - sdk/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: go build ${{ matrix.service }}
+        run: cd ${{ matrix.service }} && go build ./...
+      - name: go test ${{ matrix.service }}
+        run: cd ${{ matrix.service }} && go test -race -timeout 60s ./...
+
+  console-build:
+    name: AEP Console — TypeScript Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/console/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  docker-build:
+    name: Docker — Build all images
+    runs-on: ubuntu-latest
+    # Only run on push to dev/main to save CI minutes on PRs
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all Docker images
+        run: docker compose build --parallel

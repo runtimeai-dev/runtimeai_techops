@@ -1,0 +1,102 @@
+# OPER_RT19-084j — HA + capacity for mcp-gateway
+# 2 replicas, PodDisruptionBudget keeps at least 1 available during
+# rolling updates, sticky session via cookie hash so an in-flight tool
+# call stays on the same pod across HTTP keep-alive boundaries.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: rt19
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+    spec:
+      containers:
+      - name: mcp-gateway
+        image: runtimeaicr.azurecr.io/mcp-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8091
+        env:
+        - name: REQUIRE_MTLS_REGISTER
+          value: "true"
+        - name: AUTH_JWKS_URL
+          value: "http://auth-svc.rt19.svc.cluster.local:8097/.well-known/jwks.json"
+        - name: MCP_AUDIENCE
+          value: "mcp.runtimeai.io,mcp.rt19.runtimeai.io"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mcp-gateway-secrets
+              key: DATABASE_URL
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8091 }
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet: { path: /readyz, port: 8091 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-gateway-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mcp-gateway
+---
+# OPER_RT19-084j — HPA so we autoscale on real load before the cluster
+# scheduler is the bottleneck (KAI-200 lesson). Conservative limits.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-gateway-hpa
+  namespace: rt19
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-gateway
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30

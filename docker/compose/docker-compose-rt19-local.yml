@@ -1,0 +1,580 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    #pull_policy: never
+    #platform: linux/amd64
+    environment:
+      - POSTGRES_PASSWORD=rtai-db-secret-2026
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=authzion
+    ports: [ "5432:5432" ]
+    command: [ "postgres", "-c", "ssl=off" ] # Simulating SSL requirement; in prod use real certs
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - ../../data/postgres:/var/lib/postgresql/data
+      - ./init-roles.sql:/docker-entrypoint-initdb.d/init-roles.sql:ro
+      - ./init-discovery.sql:/docker-entrypoint-initdb.d/init-discovery.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    #pull_policy: never
+    #platform: linux/amd64
+    command: [ "redis-server", "--requirepass", "rtai-redis-secret-2026" ]
+    # Host port 6380 avoids conflict with other local stacks that use 6379 (e.g. pq_data_platform)
+    ports: [ "6380:6379" ]
+
+  # --- Zip10: MCP inventory simulation / discovery ---
+  discovery:
+    build: { context: ../../discovery }
+    environment:
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - REDIS_URL=redis://:rtai-redis-secret-2026@redis:6379/0
+      - API_KEY_SECRET=dev-secret-key
+      - CONTROL_PLANE_URL=http://control-plane:8080
+      - VAULT_ADDR=http://vault-broker:8097
+      - RUNTIMEAI_SERVICE_TOKEN=runtimeai-dev-secret-2026
+    # Host port 8190 avoids conflict with other local stacks that use 8090 (e.g. pq_data_platform)
+    ports: [ "8190:8090" ]
+    command: [ "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8090" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  network-analyzer:
+    build:
+      context: ../../services/network-analyzer
+    environment:
+      - DISCOVERY_API_URL=http://discovery:8090/v1/discovery/report
+      - SIGNATURES_FILE=/app/signatures.yaml
+      - TENANT_ID=bank-a
+    volumes:
+      - ../../discovery/signatures.yaml:/app/signatures.yaml:ro
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    depends_on:
+      - discovery
+
+  # --- Zip10: drift rules / evaluation engine ---
+  # --- RuntimeAI: Drift Engine (Go Microservice) ---
+  drift-engine:
+    build:
+      context: ../../services/drift-engine
+      dockerfile: Dockerfile
+    command: [ "/bin/drift-server" ]
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=rtai-redis-secret-2026
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - GRPC_PORT=50051
+      - HTTP_PORT=8083
+      - API_KEY_SECRET=dev-drift-key
+    # Host port 8183 avoids conflict with other local stacks that use 8083 (e.g. pq_data_platform)
+    ports: [ "50051:50051", "8183:8083" ]
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  drift-worker:
+    build:
+      context: ../../services/drift-engine
+      dockerfile: Dockerfile
+    command: [ "/bin/drift-worker" ]
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=rtai-redis-secret-2026
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - CONTROL_PLANE_URL=http://control-plane:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # --- RuntimeAI: Cost Ledger (Budget Caps) ---
+  cost-ledger:
+    build:
+      context: ../../services/cost-ledger
+    environment:
+      - REDIS_ADDR=${REDIS_URL:-redis://:rtai-redis-secret-2026@redis:6379/0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable}
+      - PORT=8099
+      - CONTROL_PLANE_URL=http://control-plane:8080
+    ports:
+      - "8102:8099"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+
+  # --- Drift Engine DB Migrations ---
+  drift-migrate:
+    image: migrate/migrate:v4.17.0
+    #pull_policy: never
+    #platform: linux/amd64
+    command:
+      - -path=/migrations
+      - -database=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - up
+    volumes:
+      - ../../services/drift-engine/migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- Zip10: policy bundles per tenant + signing keys in DB ---
+  policy-manager:
+    build: { context: ../../policy-manager }
+    environment:
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - API_KEY_SECRET=dev-secret-key
+    ports: [ "8093:8093" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- Zip10: bundle-cache verifies + serves bundles to OPA ---
+  bundle-cache:
+    build: { context: ../../bundle-cache }
+    environment:
+      - REDIS_URL=redis://:rtai-redis-secret-2026@redis:6379/0
+      - POLICY_MANAGER=http://policy-manager:8093
+      - TENANTS=bank-a,bank-b,acme-corp
+      - POLL_SECONDS=10
+      - POLICY_BANK_A=v1
+      - POLICY_BANK_B=v1
+      - POLICY_ACME_CORP=v1
+    ports: [ "8094:8094" ]
+    depends_on:
+      - policy-manager
+
+  # --- OPA loads tenant bundles (Zip10) ---
+  opa:
+    image: openpolicyagent/opa:0.63.0
+    #pull_policy: never
+    #platform: linux/amd64
+    command: [ "run", "--server", "/policies", "--config-file=/config/opa.yaml", "--log-level=info", "--authentication=token", "--authorization=basic" ]
+    volumes:
+      - ../../opa/config/opa.yaml:/config/opa.yaml:ro
+      - ../../opa/policies:/policies:ro
+    ports:
+      - "8181:8181"
+    depends_on:
+      - bundle-cache
+
+
+  # --- MCP-093: MCP Server Fleet (PostgreSQL + Gateway) ---
+  mcp-server-postgresql:
+    build:
+      context: ../../../runtimeai
+      dockerfile: mcp_gateway/mcp-servers/mcp-server-postgresql/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://mcp_reader:mcp-readonly-2026@postgres:5432/authzion?sslmode=disable
+      - PORT=7401
+      - LOG_LEVEL=info
+    ports: [ "7401:7401" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mcp-gateway:
+    build: 
+      context: ../../../runtimeai/mcp_gateway/mcp-gateway
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://authzion:authzion@postgres:5432/authzion?sslmode=disable
+      - PORT=8091
+      - LOG_LEVEL=info
+      - CONTROL_PLANE_URL=http://control-plane:8443
+      - MCP_JWT_SECRET=mcp-gateway-test-secret-key-2026
+      - RUN_MODE=development
+    ports: [ "8191:8091" ]
+    depends_on:
+      - postgres
+
+  # --- Zip8/Zip7: Flow Enforcer (runtime enforcement point) ---
+  flow-enforcer:
+    build:
+      context: ../../flow-enforcer
+      dockerfile: Dockerfile
+    environment:
+      - OPA_URL="http://opa:8181/v1/data/authzion/allow"
+      - OPA_TOKEN=rtai-opa-secret-2026
+      - POLICY_MANAGER=http://policy-manager:8093
+      - INTERNAL_SERVICE_TOKEN=runtimeai-dev-secret-2026
+      # If your flow-enforcer supports mTLS, these will be used; if not, harmless.
+      - TLS_CERT=/certs/flow-enforcer.pem
+      - TLS_KEY=/certs/flow-enforcer.key
+      - CA_CERT=/certs/ca.pem
+    volumes:
+      - ../../security/mtls:/certs:ro
+    ports: [ "8092:8092" ]
+    depends_on:
+      - opa
+      - policy-manager
+
+  # 4. Identity DNS
+  identity-dns:
+    build:
+      context: ../../services/identity-dns
+      dockerfile: Dockerfile
+    ports:
+      - "1053:1053/udp"
+      - "1053:1053/tcp"
+      - "8053:8053"
+    environment:
+      - DATABASE_URL=postgres://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - DNS_PORT=1053
+      - DOH_PORT=8053
+      - UPSTREAM_DNS=8.8.8.8:53
+      - CACHE_TTL=60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 5. Vault Broker (Secrets Management) ---
+  vault-broker:
+    build: { context: ../../services/vault-broker }
+    environment:
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=rtai-root-secure-2026
+    ports: [ "8097:8097" ]
+    command: [ "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8097" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_started
+
+  vault:
+    image: hashicorp/vault:1.15
+    #pull_policy: never
+    #platform: linux/amd64
+    # Host port 8201 avoids conflict with other local stacks that use 8200 (e.g. pq_data_platform)
+    ports:
+      - "8201:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "rtai-root-secure-2026"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    #pull_policy: never
+    #platform: linux/amd64
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+      - "4318:4318"
+
+  dex:
+    image: dexidp/dex:v2.37.0
+    #pull_policy: never
+    #platform: linux/amd64
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex/config.yaml:/etc/dex/config.docker.yaml
+    command: [ "dex", "serve", "/etc/dex/config.docker.yaml" ]
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    #pull_policy: never
+    #platform: linux/amd64
+    command: [ "--config.file=/etc/prometheus/prometheus.yml", "--web.config.file=/etc/prometheus/web-config.yml" ]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/web-config.yml:/etc/prometheus/web-config.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    #pull_policy: never
+    #platform: linux/amd64
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # --- Zip8: control plane (API server) ---
+  control-plane:
+    build:
+      context: ../../control-plane
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable"
+      REDIS_URL: "redis://:rtai-redis-secret-2026@redis:6379/0"
+      OPA_URL: "http://opa:8181/v1/data/authzion/allow"
+      OPA_TOKEN: "rtai-opa-secret-2026"
+      FLOW_ENFORCER_URL: "http://flow-enforcer:8092"
+
+      VAULT_BROKER_URL: "http://vault-broker:8097"
+      DASHBOARD_DIR: "/app/dashboard/dist"
+      PROMETHEUS_URL: "http://prometheus:9090"
+      ALERTMANAGER_URL: "http://alertmanager:9093"
+      OIDC_JWKS_URL: "http://dex:5556/dex/keys"
+      OIDC_ISSUER_URL: "http://dex:5556/dex"
+      OIDC_CLIENT_ID: "runtimeai-control-plane"
+      OIDC_CLIENT_SECRET: "secret"
+      OIDC_REDIRECT_URL: "http://localhost:8080/api/auth/callback"
+      ALLOWED_ORIGINS: "*"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+      OTEL_SERVICE_NAME: "control-plane"
+      RUN_MODE: "development"
+      RUNTIMEAI_ADMIN_SECRET: "runtimeai-dev-secret-2026"
+      AUTH_SERVICE_URL: "http://auth-service:8097"
+      API_KEY_SECRET: "dev-secret-key" # Must match discovery service API key
+      VERIFIER_URL: "http://verifier:8092"
+      FIXED_SEED_PASSWORD: "true"
+      DISCOVERY_URL: "http://discovery:8090"
+      RLS_ENABLED: "true"
+      RLS_APP_PASSWORD: "changeme_app_secret" # Must match 057_row_level_security.sql runtimeai_app password
+      AUDITOR_API_KEY: "runtimeai-auditor-dev-key-2026"
+      INTERNAL_SERVICE_TOKEN: "runtimeai-dev-secret-2026"
+      ESIGN_SERVICE_URL: "http://host.docker.internal:5057"
+      ESIGN_JWT_SECRET: "${JWT_SECRET:-runtimeai_dev}"
+      AAIC_SERVICE_URL: "http://host.docker.internal:5056"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      opa:
+        condition: service_started
+      flow-enforcer:
+        condition: service_started
+      dex:
+        condition: service_started
+      # vault-broker:
+      #   condition: service_started
+      jaeger:
+        condition: service_started
+
+  # --- Vendor RBAC Wrapper (Shim) ---
+  vendor-wrapper:
+    build:
+      context: ../../services/vendor-wrapper
+      dockerfile: Dockerfile
+    environment:
+      VENDOR_WRAPPER_PORT: "8098"
+      TARGET_URL: "http://internal-api:5678"
+      OPA_URL: "http://opa:8181/v1/data/vendor/allow"
+      OPA_TOKEN: "rtai-opa-secret-2026"
+      REQUEST_TIMEOUT: "30"
+    ports:
+      - "8098:8098"
+    depends_on:
+      opa:
+        condition: service_started
+      internal-api:
+        condition: service_started
+
+  # --- Data Proxy (PII Masking) ---
+  data-proxy:
+    build:
+      context: ../../services/data-proxy
+      dockerfile: Dockerfile
+    environment:
+      DATA_PROXY_TARGET: "http://internal-api:80"
+      DATA_PROXY_PORT: "8100"
+      MASKING_CONFIG: "/app/masking_rules.yaml"
+    volumes:
+      - ../../services/data-proxy/config/masking_rules.yaml:/app/masking_rules.yaml:ro
+    ports:
+      - "8100:8100"
+    depends_on:
+      internal-api:
+        condition: service_started
+
+  # --- WAF (Bot Mitigation) ---
+  waf:
+    build:
+      context: ../../services/waf
+      dockerfile: Dockerfile
+    ports:
+      - "8101:8101"
+    extra_hosts:
+      - "kube-dns.kube-system.svc.cluster.local:127.0.0.11"
+    depends_on:
+      internal-api:
+        condition: service_started
+
+  # --- Mock Internal API (Echoes requests for PII masking verification) ---
+  internal-api:
+    image: kennethreitz/httpbin
+    #pull_policy: never
+    #platform: linux/amd64
+    ports:
+      - "8099:80"
+
+  # --- Dashboard UI (React + Nginx) ---
+  dashboard:
+    build:
+      context: ../../dashboard
+      dockerfile: Dockerfile
+    environment:
+      # FinOps service upstream — override for cloud/K8s (e.g. finops-service:8092)
+      - FINOPS_UPSTREAM=${FINOPS_UPSTREAM:-host.docker.internal:5055}
+      # AAIC Compliance Marketplace upstream — AAIC runs in RuntimeAI docker-compose stack
+      - AAIC_UPSTREAM=${AAIC_UPSTREAM:-host.docker.internal:5056}
+      # Agent Marketplace upstream — marketplace runs in RuntimeAI docker-compose stack
+      - MARKETPLACE_UPSTREAM=${MARKETPLACE_UPSTREAM:-host.docker.internal:8096}
+      # Billing Service upstream — billing runs in RuntimeAI docker-compose stack
+      - BILLING_UPSTREAM=${BILLING_UPSTREAM:-host.docker.internal:5090}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "4000:8080"
+    depends_on:
+      - control-plane
+
+  # --- Bot CA (Social Verification) ---
+  bot-ca:
+    build:
+      context: ../../services/bot-ca
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8099
+    ports:
+      - "8103:8099"
+
+  # --- Verifier (Gaming Anti-Cheat) ---
+  verifier:
+    build:
+      context: ../../services/verifier
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8092
+      - AGENT_REGISTRY_PATH=/app/config/agents.json
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+    volumes:
+      - ../../services/verifier/config/agents.json:/app/config/agents.json:ro
+    ports:
+      - "8104:8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- Sequence Modeler (API Security) ---
+  sequence-modeler:
+    build:
+      context: ../../services/sequence-modeler
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8096
+      - PATTERNS_FILE=/app/config/patterns.yaml
+    volumes:
+      - ../../services/sequence-modeler/config/patterns.yaml:/app/config/patterns.yaml:ro
+    ports:
+      - "8105:8096"
+  # --- AAIC Compliance Marketplace ---
+  # NOTE: AAIC service runs in the RuntimeAI docker-compose stack.
+  # See: RuntimeAI/docker-compose.yml (aaic-service on port 5056)
+
+  # --- Auth Service (Unified Authentication Microservice) ---
+  # AUTH-001: Standalone Go microservice for all auth flows.
+  # Handles: login, SSO, OAuth, MFA, SCIM, JWKS, webhooks.
+  # Runs its own DB migrations at startup via golang-migrate.
+  auth-service:
+    build:
+      context: ../../../runtimeai/auth-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - REDIS_URL=redis://:rtai-redis-secret-2026@redis:6379/0
+      - BASE_URL=http://localhost:8197
+      - LOG_LEVEL=info
+      - ALLOWED_ORIGINS=http://localhost:4000,http://localhost:8080,http://localhost:5173
+    ports: [ "8197:8097" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8097/healthz" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # --- Billing Service (Unified Platform Billing — BILLING-001) ---
+  # Runs in RuntimeAI docker-compose stack; this entry is for co-located deployment.
+  billing-service:
+    build:
+      context: ../../../runtimeai/billing-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:rtai-db-secret-2026@postgres:5432/authzion?sslmode=disable
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_CONNECT_CLIENT_ID=${STRIPE_CONNECT_CLIENT_ID:-}
+      - STRIPE_MODE=${STRIPE_MODE:-test}
+      - BILLING_SERVICE_API_KEY=${BILLING_SERVICE_API_KEY:-billing-dev-key-2026}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - REDIS_URL=redis://:rtai-redis-secret-2026@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-runtimeai-dev-secret-2026}
+      - SERVICE_PORT=5090
+    ports: [ "5090:5090" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5090/healthz" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ── GAP-8: SIEM Mock ─────────────────────────────────────────────────────
+  # Receives audit fanout events from the Flow Enforcer WASM (fire-and-forget).
+  # In production, replace with a real SIEM connector (Splunk, DataDog, etc.).
+  siem:
+    build:
+      context: ../../services/siem-mock
+      dockerfile: Dockerfile
+    ports:
+      - "8106:8090"
+
+  # ── GAP-7: KMS Mock (bundle signature verification) ───────────────────────
+  # Provides /v1/verify for the WASM to validate policy bundle signatures.
+  # In production, replace with HashiCorp Vault Transit or AWS KMS.
+  kms-mock:
+    build:
+      context: ../../services/kms-mock
+      dockerfile: Dockerfile
+    ports:
+      - "9443:9443"
+
+volumes:
+  grafana_data:
+  ml-artifacts:

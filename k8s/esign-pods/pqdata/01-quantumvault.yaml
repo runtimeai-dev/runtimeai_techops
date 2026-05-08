@@ -1,0 +1,183 @@
+# OPER_RT19-062: QuantumVault — key management, secrets, transit encrypt/decrypt
+# 2 replicas with TLS (cert-manager) for HA. Separate PostgreSQL backend (not shared with authzion).
+# NetworkPolicy: only esign-service pods from rt01/rt02 namespaces may connect.
+---
+# ── QuantumVault PostgreSQL (dedicated, separate from authzion) ──────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: quantumvault-postgres
+  namespace: pqdata
+spec:
+  serviceName: quantumvault-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: quantumvault-postgres
+  template:
+    metadata:
+      labels:
+        app: quantumvault-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_DB
+              value: quantumvault
+            - name: POSTGRES_USER
+              value: qvault
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: quantumvault-secrets
+                  key: qv-db-password
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, qvault]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: qv-postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: qv-postgres-data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: managed-premium
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantumvault-postgres
+  namespace: pqdata
+spec:
+  selector:
+    app: quantumvault-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# ── QuantumVault Certificate (cert-manager) ───────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: quantumvault-tls
+  namespace: pqdata
+spec:
+  secretName: quantumvault-tls-secret
+  dnsNames:
+    - quantumvault.pqdata.svc.cluster.local
+    - quantumvault.pqdata
+  issuerRef:
+    name: cluster-issuer
+    kind: ClusterIssuer
+---
+# ── QuantumVault Deployment (2 replicas, TLS) ────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantumvault
+  namespace: pqdata
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quantumvault
+  template:
+    metadata:
+      labels:
+        app: quantumvault
+    spec:
+      containers:
+        - name: quantumvault
+          image: runtimeaicr.azurecr.io/quantumvault:latest
+          env:
+            - name: QV_TLS_ENABLED
+              value: "true"
+            - name: QV_TLS_CERT_FILE
+              value: /tls/tls.crt
+            - name: QV_TLS_KEY_FILE
+              value: /tls/tls.key
+            - name: QV_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: quantumvault-secrets
+                  key: qv-database-url
+            - name: QV_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: quantumvault-secrets
+                  key: qv-jwt-secret
+            - name: PORT
+              value: "8200"
+          ports:
+            - containerPort: 8200
+              name: https
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8200
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8200
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+      volumes:
+        - name: tls
+          secret:
+            secretName: quantumvault-tls-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantumvault
+  namespace: pqdata
+spec:
+  selector:
+    app: quantumvault
+  ports:
+    - name: https
+      port: 8200
+      targetPort: 8200
+---
+# ── PodDisruptionBudget: ensure ≥1 replica available during rollouts ─────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: quantumvault-pdb
+  namespace: pqdata
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: quantumvault

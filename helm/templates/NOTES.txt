@@ -1,0 +1,3 @@
+{{- /* Air-gap install templates. Static copies of rt19 manifests; */ -}}
+{{- /* override values via {{ .Values.* }} in a future iteration.    */ -}}
+MCP Gateway installed in namespace {{ .Release.Namespace }}.

@@ -1,0 +1,12 @@
+partner: { cloud: azure }
+ingress:
+  className: nginx                  # AGIC also supported via 'azure-application-gateway'
+  tlsClusterIssuer: letsencrypt-prod
+controlPlane:
+  storageClass: managed-csi
+mcpGateway:
+  storageClass: managed-csi
+externalServices:
+  postgres: { enabled: true }   # Azure DB for PG via DATABASE_URL secret
+  redis:    { enabled: true }   # Azure Cache for Redis via REDIS_URL secret
+  blob:     { enabled: true }   # Azure Blob bucket

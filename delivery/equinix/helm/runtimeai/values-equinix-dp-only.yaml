@@ -1,0 +1,204 @@
+# values-equinix-dp-only.yaml — Hybrid Deployment: Data Plane Only
+#
+# Use when RuntimeAI hosts the Control Plane (e.g., on eqix-rt19 AKS) and
+# Equinix deploys only the Data Plane on their own infrastructure.
+#
+# Usage:
+#   helm install runtimeai-dp ./helm/runtimeai \
+#     -f helm/runtimeai/values-equinix-dp-only.yaml \
+#     --set global.registry=your-registry.equinix.internal \
+#     --set controlPlane.remoteUrl=https://api.rt19.runtimeai.io \
+#     --set controlPlane.internalServiceToken=<TOKEN> \
+#     -n runtimeai-dp
+#
+# DP services deployed:
+#   flow-enforcer, opa, bundle-cache, data-proxy, cost-ledger,
+#   waf, vendor-wrapper, identity-dns, local postgres, local redis
+
+global:
+  registry: "your-registry.equinix.internal"
+  imageTag: "1.0.0-trial"
+  imagePullPolicy: IfNotPresent
+  namespace: runtimeai-dp
+  domain: "runtimeai.equinix.internal"
+  storageClass: "local-path"
+  imagePullSecret: "equinix-pull-secret"
+
+  # Hybrid mode flag — disables all CP-side chart components
+  deployMode: "dataplane-only"
+
+secrets:
+  dbSecret: "rt19-db-secret"
+  appSecret: "rt19-app-secrets"
+  cpConnectivity: "rt19-cp-connectivity"  # CONTROL_PLANE_URL, INTERNAL_SERVICE_TOKEN, BUNDLE_CACHE_URL
+
+# ── Control Plane (remote — NOT deployed here) ────────────────────────────
+# Set enabled=false for all CP services. The DP connects to the remote CP.
+controlPlane:
+  enabled: false
+  # Remote CP coordinates (used by DP services for bundle pulls / audit / kill-switch)
+  remoteUrl: "https://api.rt19.runtimeai.io"
+  internalServiceToken: ""   # Override via --set or K8s secret rt19-cp-connectivity
+
+dashboard:
+  enabled: false
+
+authService:
+  enabled: false
+
+discovery:
+  enabled: false
+
+esignService:
+  enabled: false
+
+esignLanding:
+  enabled: false
+
+aaicService:
+  enabled: false
+
+auditorDashboard:
+  enabled: false
+
+marketplace:
+  enabled: false
+
+aiFinops:
+  enabled: false
+
+billing:
+  enabled: false
+
+saasAdmin:
+  enabled: false
+
+# ── Local infrastructure (small footprint) ───────────────────────────────
+postgresql:
+  enabled: true
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+redis:
+  enabled: true
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Data Plane services ───────────────────────────────────────────────────
+flowEnforcer:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+opa:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+bundleCache:
+  enabled: true
+  replicas: 1
+  # Upstream bundle source — defaults to controlPlane.remoteUrl + /bundles
+  upstreamUrl: ""
+  pollSeconds: 30
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+dataProxy:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+costLedger:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+waf:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+vendorWrapper:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+identityDns:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# ── No ingress needed for DP-only ─────────────────────────────────────────
+# DP services are accessed via ClusterIP from within the cluster.
+# flow-enforcer is reached by agent traffic via NodePort or LoadBalancer.
+ingress:
+  enabled: false
+
+# ── Monitoring (lightweight) ──────────────────────────────────────────────
+monitoring:
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false

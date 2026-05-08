@@ -1,0 +1,135 @@
+# OPER_RT19-084j — HA + capacity for mcp-gateway
+# 2 replicas, PodDisruptionBudget keeps at least 1 available during
+# rolling updates, sticky session via cookie hash so an in-flight tool
+# call stays on the same pod across HTTP keep-alive boundaries.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: rt19
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+    spec:
+      # F9-J — non-root + drop capabilities so the pod satisfies the
+      # `restricted` PodSecurity standard.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+      - name: mcp-gateway
+        image: runtimeaicr.azurecr.io/mcp-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8091
+        env:
+        # F9-G: keep this false until the npm-shim servers can do Bot-CA mTLS.
+        # Go servers already speak mTLS via CERT_FILE/KEY_FILE/CA_FILE, but
+        # the npm fetch shim does not. Flip back to "true" once the shim is
+        # upgraded (tracked in V2-mcp-platform-v2).
+        - name: REQUIRE_MTLS_REGISTER
+          value: "false"
+        - name: AUTH_JWKS_URL
+          value: "http://auth-svc.rt19.svc.cluster.local:8097/.well-known/jwks.json"
+        - name: MCP_AUDIENCE
+          value: "mcp.runtimeai.io,mcp.rt19.runtimeai.io"
+        # F9-G — TLS_CERT_FILE/TLS_KEY_FILE are wired but commented for v1.
+        # The cert (mcp-gateway-tls) is provisioned by cert-manager and the
+        # gateway code switches to ListenAndServeTLS when these are set; we
+        # keep them blank until the npm-shim servers can verify the Bot-CA
+        # root (tracked in V2-mcp-platform-v2). Ingress still terminates
+        # public TLS today.
+        # - name: TLS_CERT_FILE
+        #   value: "/etc/mcp-gateway-tls/tls.crt"
+        # - name: TLS_KEY_FILE
+        #   value: "/etc/mcp-gateway-tls/tls.key"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mcp-gateway-secrets
+              key: DATABASE_URL
+        volumeMounts:
+        - name: mcp-gateway-tls
+          mountPath: /etc/mcp-gateway-tls
+          readOnly: true
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: { drop: [ALL] }
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8091 }
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet: { path: /readyz, port: 8091 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: mcp-gateway-tls
+        secret:
+          secretName: mcp-gateway-tls
+          optional: true
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-gateway-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mcp-gateway
+---
+# OPER_RT19-084j — HPA so we autoscale on real load before the cluster
+# scheduler is the bottleneck (KAI-200 lesson). Conservative limits.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-gateway-hpa
+  namespace: rt19
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-gateway
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30

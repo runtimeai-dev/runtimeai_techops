@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aep-console
+  namespace: aep
+  labels:
+    app: aep-console
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: aep-console
+  template:
+    metadata:
+      labels:
+        app: aep-console
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: aep-console
+      containers:
+        - name: aep-console
+          image: runtimeaicr.azurecr.io/aep/aep-console:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aep-console
+  namespace: aep
+spec:
+  selector:
+    app: aep-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aep-console-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aep-console
+---
+# Repoints aep.rt19.runtimeai.io from developer-hub:8311 (API, returns 404 on /)
+# to aep-console:80 (the React UI). The previous ingress
+# `aep-developer-hub-ingress` is replaced by this one — apply with
+# `kubectl apply -f` and the old ingress can be deleted in a follow-up.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aep-console-ingress
+  namespace: aep
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aep.rt19.runtimeai.io
+      http:
+        paths:
+          # Auth-service co-routed under the console host so the LoginPage
+          # can post relative-URL requests and the email-baked verify links
+          # work without a separate DNS record for auth.aep.rt19.
+          - path: /api/v1/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          - path: /api/v1/me
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          - path: /api/v1/trial
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          - path: /api/v1/admin
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          - path: /api/v1/api-keys
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+          # All other product calls go to the gateway. The gateway's parallel
+          # route layer accepts /api/v1/<product>/* and proxies to the right
+          # upstream Service in the aep namespace. Keeps auth-on enforcement
+          # in one place (the gateway).
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-gateway
+                port:
+                  number: 8300
+          - path: /healthz/all
+            pathType: Exact
+            backend:
+              service:
+                name: aep-gateway
+                port:
+                  number: 8300
+          - path: /openapi.json
+            pathType: Exact
+            backend:
+              service:
+                name: aep-gateway
+                port:
+                  number: 8300
+          # SPA — must be last so above routes win.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-console
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - aep.rt19.runtimeai.io
+      secretName: aep-rt19-tls

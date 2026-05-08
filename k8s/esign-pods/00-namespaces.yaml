@@ -1,0 +1,45 @@
+# OPER_RT19-062: Multi-Pod eSign Architecture — Namespaces
+# Creates all required namespaces for the multi-pod eSign deployment.
+#
+# Namespace layout:
+#   shared-data  — PostgreSQL (Patroni), PgBouncer, Redis Sentinel
+#   pqdata       — QuantumVault, QV-PostgreSQL, PQ Policy Engine
+#   gateway      — nginx+lua JWT pod routing, Azure Front Door backend
+#   rt01, rt02   — esign-service + pq-sign per pod (future: rt03, rt04...)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared-data
+  labels:
+    app.kubernetes.io/part-of: esign-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pqdata
+  labels:
+    app.kubernetes.io/part-of: esign-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/part-of: esign-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rt01
+  labels:
+    app.kubernetes.io/part-of: esign-platform
+    esign.runtimeai.io/pod: rt01
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rt02
+  labels:
+    app.kubernetes.io/part-of: esign-platform
+    esign.runtimeai.io/pod: rt02

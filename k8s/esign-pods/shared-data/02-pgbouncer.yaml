@@ -1,0 +1,107 @@
+# OPER_RT19-062: PgBouncer connection pooler (×2 replicas)
+# Transaction pooling mode: max_connections=100 on postgres, DEFAULT_POOL_SIZE=25 per db,
+# MAX_CLIENT_CONN=500 — supports 2 pods × many concurrent requests without exhausting postgres.
+# All esign-service pods connect to pgbouncer:5432, never directly to postgres.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: shared-data
+data:
+  pgbouncer.ini: |
+    [databases]
+    authzion = host=postgres-primary port=5432 dbname=authzion
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = transaction
+    default_pool_size = 25
+    max_client_conn = 500
+    max_db_connections = 100
+    server_reset_query = DISCARD ALL
+    ignore_startup_parameters = extra_float_digits
+    log_connections = 0
+    log_disconnections = 0
+    log_pooler_errors = 1
+    stats_period = 60
+    server_tls_sslmode = require
+
+  # userlist.txt is managed via Secret (see below)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: shared-data
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: pgbouncer/pgbouncer:1.22.1
+          ports:
+            - containerPort: 5432
+              name: pgbouncer
+          env:
+            - name: PGBOUNCER_CONFIG
+              value: /etc/pgbouncer/pgbouncer.ini
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer/pgbouncer.ini
+              subPath: pgbouncer.ini
+            - name: userlist
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: userlist.txt
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: pgbouncer-config
+        - name: userlist
+          secret:
+            secretName: pgbouncer-userlist
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: shared-data
+spec:
+  selector:
+    app: pgbouncer
+  ports:
+    - name: pgbouncer
+      port: 5432
+      targetPort: 5432
+---
+# Secret: pgbouncer-userlist — create via:
+# kubectl create secret generic pgbouncer-userlist -n shared-data \
+#   --from-literal=userlist.txt='"esign_app" "md5<hash>"'
+# Generate md5 hash: echo -n "password<username>" | md5sum

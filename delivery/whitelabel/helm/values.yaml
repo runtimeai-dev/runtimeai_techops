@@ -1,0 +1,57 @@
+# OPER_RT19-087p — Base values for the white-label Helm chart.
+# Cloud-specific values files (values-gcp.yaml, etc.) overlay this.
+
+partner:
+  slug: ""           # injected at install time
+  cloud: ""          # gcp|aws|azure|quickstart
+
+controlPlane:
+  image:
+    repository: runtimeaicr.azurecr.io/control-plane
+    tag: "1.0.0"     # overridden by Makefile-built image when air-gapped
+  replicas: 2
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+
+dataPlane:
+  image:
+    repository: runtimeaicr.azurecr.io/data-plane
+    tag: "1.0.0"
+  replicas: 1
+
+mcpGateway:
+  image:
+    repository: runtimeaicr.azurecr.io/mcp-gateway
+    tag: "1.0.0"
+  replicas: 2
+
+# Cloud-managed dependencies. Overridden in values-<cloud>.yaml.
+externalServices:
+  postgres:
+    enabled: true
+    # DATABASE_URL is injected via Secret runtimeai-config (install.sh)
+  redis:
+    enabled: true
+  blob:
+    enabled: true
+
+# Quickstart in-cluster Postgres + Redis. Disabled by default; values-quickstart.yaml
+# flips this on. NOT FOR PRODUCTION.
+quickstart:
+  postgres:
+    enabled: false
+    storage: 20Gi
+  redis:
+    enabled: false
+
+ingress:
+  className: nginx
+  tlsClusterIssuer: letsencrypt-prod
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]

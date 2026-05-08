@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: arh
+  namespace: runtimecrm
+  labels:
+    app: arh
+spec:
+  type: ClusterIP
+  selector:
+    app: arh
+  ports:
+    - port: 8315
+      targetPort: 8315
+      protocol: TCP
+      name: http

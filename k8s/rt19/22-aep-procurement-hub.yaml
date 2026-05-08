@@ -1,0 +1,105 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: procurement-hub
+  namespace: aep
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8313
+    targetPort: 8313
+  selector:
+    app: procurement-hub
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: procurement-hub
+  namespace: aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: procurement-hub
+  template:
+    metadata:
+      labels:
+        app: procurement-hub
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: procurement-hub
+        image: runtimeaicr.azurecr.io/aep/procurement-hub:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8313
+        env:
+        - name: PORT
+          value: "8313"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: COST_CONTROL_URL
+          value: "http://cost-control.aep.svc.cluster.local:8302"
+        - name: FRAUD_SHIELD_URL
+          value: "http://fraud-shield.aep.svc.cluster.local:8306"
+        - name: CONTRACT_MANAGER_URL
+          value: "http://contract-manager.aep.svc.cluster.local:8312"
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8313
+          initialDelaySeconds: 15
+          periodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - procurement-hub
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: procurement-hub-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: procurement-hub
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

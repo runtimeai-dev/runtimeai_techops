@@ -1,0 +1,39 @@
+# OPER_RT19-084 F4 — Self-signed Bot-CA ClusterIssuer.
+#
+# Cert-manager bootstrap: a SelfSigned issuer mints the Bot-CA root, which
+# becomes the CA for the `bot-ca-issuer` ClusterIssuer used by every MCP
+# server's `Certificate` resource.
+#
+# Production hardening (later): replace SelfSigned bootstrap with HSM-backed
+# root + cluster-scoped CA distribution.
+
+# 1) Bootstrap SelfSigned issuer (rt19-only)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata: { name: selfsigned-bootstrap, namespace: cert-manager }
+spec:
+  selfSigned: {}
+---
+# 2) Self-signed root certificate stored as a Secret in cert-manager namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: bot-ca-root, namespace: cert-manager }
+spec:
+  isCA: true
+  commonName: runtimeai-bot-ca
+  secretName: bot-ca-root
+  duration: 87600h    # 10 years
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: Issuer
+---
+# 3) Cluster-wide ClusterIssuer that signs all MCP-server Bot-CA certs.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata: { name: bot-ca-issuer }
+spec:
+  ca:
+    secretName: bot-ca-root

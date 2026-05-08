@@ -1,0 +1,62 @@
+# F9-F — kube-prometheus-stack scrape + alert config for mcp-gateway.
+#
+# Re-add the ServiceMonitor (removed in F7 because the CRD wasn't
+# installed) and the PrometheusRule alerts. Apply only after the stack
+# is installed:
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install kps prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
+#   kubectl apply -f mcp-prometheus.yaml
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mcp-gateway
+  namespace: rt19
+  labels: { release: kps }
+spec:
+  selector:
+    matchLabels: { app: mcp-gateway }
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mcp-gateway-rules
+  namespace: rt19
+  labels: { release: kps }
+spec:
+  groups:
+  - name: mcp-gateway.rules
+    interval: 30s
+    rules:
+    - alert: McpGatewayHighErrorRate
+      expr: |
+        sum(rate(mcp_gateway_requests_total{status=~"5.."}[5m])) /
+        sum(rate(mcp_gateway_requests_total[5m])) > 0.05
+      for: 10m
+      labels: { severity: warning }
+      annotations:
+        summary: "MCP gateway error rate >5% over 10m"
+    - alert: McpGatewayP95LatencyHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(mcp_gateway_request_duration_seconds_bucket[5m])) by (le)) > 1.5
+      for: 10m
+      labels: { severity: warning }
+      annotations:
+        summary: "MCP gateway p95 latency >1.5s"
+    - alert: McpServerStaleHeartbeat
+      expr: time() - mcp_server_last_heartbeat_seconds > 180
+      for: 5m
+      labels: { severity: critical }
+      annotations:
+        summary: "MCP server {{ $labels.server }} hasn't heartbeated in >3m"
+    - alert: McpRegistryEmpty
+      expr: mcp_registry_servers_total < 1
+      for: 5m
+      labels: { severity: critical }
+      annotations:
+        summary: "MCP gateway has zero registered servers"

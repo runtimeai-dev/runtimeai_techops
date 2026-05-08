@@ -1,0 +1,219 @@
+# OPER_RT19-084b1..b6 — Deployments + Services for the 6 MCP servers.
+# Each pod registers itself with mcp-gateway via the SDK helper
+# (registerWithGateway / RegisterAndHeartbeat) on boot. Resource
+# requests sized per the KAI-200 capacity guard (100m / 128Mi each).
+# Bot-CA-issued cert mounted at /etc/bot-ca; gateway verifies SAN.
+# NetworkPolicy restricts egress to gateway + the server's own
+# upstream API (e.g. okta.com, postgres, runtimecrm).
+
+# ---------------- mcp-server-quantosign ----------------
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-quantosign, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-quantosign } }
+  template:
+    metadata: { labels: { app: mcp-server-quantosign } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-quantosign:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7001 }]
+        env:
+        - { name: MCP_GATEWAY_URL, value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,        value: "mcp-server-quantosign.rt19.svc.cluster.local" }
+        - { name: ESIGN_BASE_URL,  value: "https://esign.rt19.runtimeai.io" }
+        - name: ESIGN_API_KEY
+          valueFrom: { secretKeyRef: { name: mcp-server-quantosign-secrets, key: ESIGN_API_KEY } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7001 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7001 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-quantosign-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-quantosign, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-quantosign }
+  ports: [{ port: 7001, targetPort: 7001 }]
+
+# ---------------- mcp-server-qutonomous ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-qutonomous, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-qutonomous } }
+  template:
+    metadata: { labels: { app: mcp-server-qutonomous } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-qutonomous:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7002 }]
+        env:
+        - { name: MCP_GATEWAY_URL, value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,        value: "mcp-server-qutonomous.rt19.svc.cluster.local" }
+        - { name: PQDP_BASE_URL,   value: "https://qutonomous.com" }
+        - name: PQDP_API_KEY
+          valueFrom: { secretKeyRef: { name: mcp-server-qutonomous-secrets, key: PQDP_API_KEY } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7002 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7002 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-qutonomous-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-qutonomous, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-qutonomous }
+  ports: [{ port: 7002, targetPort: 7002 }]
+
+# ---------------- mcp-server-runtimeai ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-runtimeai, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-runtimeai } }
+  template:
+    metadata: { labels: { app: mcp-server-runtimeai } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-runtimeai:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7003 }]
+        env:
+        - { name: MCP_GATEWAY_URL,    value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,           value: "mcp-server-runtimeai.rt19.svc.cluster.local" }
+        - { name: CONTROL_PLANE_URL,  value: "http://control-plane.rt19.svc.cluster.local:8080" }
+        - name: CP_API_KEY
+          valueFrom: { secretKeyRef: { name: mcp-server-runtimeai-secrets, key: CP_API_KEY } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7003 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7003 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-runtimeai-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-runtimeai, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-runtimeai }
+  ports: [{ port: 7003, targetPort: 7003 }]
+
+# ---------------- mcp-server-okta ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-okta, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-okta } }
+  template:
+    metadata: { labels: { app: mcp-server-okta } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-okta:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7004 }]
+        env:
+        - { name: MCP_GATEWAY_URL, value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,        value: "mcp-server-okta.rt19.svc.cluster.local" }
+        - name: OKTA_DOMAIN
+          valueFrom: { secretKeyRef: { name: mcp-server-okta-secrets, key: OKTA_DOMAIN } }
+        - name: OKTA_API_TOKEN
+          valueFrom: { secretKeyRef: { name: mcp-server-okta-secrets, key: OKTA_API_TOKEN } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7004 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7004 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-okta-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-okta, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-okta }
+  ports: [{ port: 7004, targetPort: 7004 }]
+
+# ---------------- mcp-server-postgresql ----------------
+# Runs on a read_only_app role; statement allowlist enforced at the
+# server (SELECT, EXPLAIN). Schema-modifying tools live in a separate
+# admin server (out of scope for v1).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-postgresql, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-postgresql } }
+  template:
+    metadata: { labels: { app: mcp-server-postgresql } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-postgresql:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7005 }]
+        env:
+        - { name: MCP_GATEWAY_URL, value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,        value: "mcp-server-postgresql.rt19.svc.cluster.local" }
+        - name: DATABASE_URL_READONLY
+          valueFrom: { secretKeyRef: { name: mcp-server-postgresql-secrets, key: DATABASE_URL_READONLY } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7005 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7005 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-postgresql-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-postgresql, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-postgresql }
+  ports: [{ port: 7005, targetPort: 7005 }]
+
+# ---------------- mcp-server-runtimecrm ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mcp-server-runtimecrm, namespace: rt19 }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mcp-server-runtimecrm } }
+  template:
+    metadata: { labels: { app: mcp-server-runtimecrm } }
+    spec:
+      containers:
+      - name: app
+        image: runtimeaicr.azurecr.io/mcp-server-runtimecrm:latest
+        imagePullPolicy: Always
+        ports: [{ containerPort: 7006 }]
+        env:
+        - { name: MCP_GATEWAY_URL, value: "https://mcp-gateway.rt19.svc.cluster.local:8091" }
+        - { name: POD_FQDN,        value: "mcp-server-runtimecrm.rt19.svc.cluster.local" }
+        - { name: ARH_BASE_URL,    value: "http://arh.runtimecrm.svc.cluster.local:8315" }
+        - name: ARH_API_KEY
+          valueFrom: { secretKeyRef: { name: mcp-server-runtimecrm-secrets, key: ARH_API_KEY } }
+        resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+        volumeMounts: [{ name: bot-ca, mountPath: /etc/bot-ca, readOnly: true }]
+        livenessProbe:  { httpGet: { path: /healthz, port: 7006 }, initialDelaySeconds: 10, periodSeconds: 30 }
+        readinessProbe: { httpGet: { path: /readyz,  port: 7006 }, initialDelaySeconds: 5,  periodSeconds: 10 }
+      volumes: [{ name: bot-ca, secret: { secretName: mcp-server-runtimecrm-bot-ca } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mcp-server-runtimecrm, namespace: rt19 }
+spec:
+  selector: { app: mcp-server-runtimecrm }
+  ports: [{ port: 7006, targetPort: 7006 }]

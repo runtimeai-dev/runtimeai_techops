@@ -1,0 +1,136 @@
+---
+# AEP Service Routing — Direct routes from ingress to services
+# Purpose: Expose all 13 AEP services via aep-api.rt19.runtimeai.io
+# Route: https://aep-api.rt19.runtimeai.io/api/<service>/* → <service>:PORT
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aep-service-routing-ingress
+  namespace: aep
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: aep-api.rt19.runtimeai.io
+    http:
+      paths:
+      # Phase 2 Services
+      - path: /api/kya
+        pathType: Prefix
+        backend:
+          service:
+            name: kya
+            port:
+              number: 8301
+      - path: /api/cost-control
+        pathType: Prefix
+        backend:
+          service:
+            name: cost-control
+            port:
+              number: 8302
+      - path: /api/audit-black-box
+        pathType: Prefix
+        backend:
+          service:
+            name: audit-black-box
+            port:
+              number: 8303
+      - path: /api/pii-shield
+        pathType: Prefix
+        backend:
+          service:
+            name: pii-shield
+            port:
+              number: 8304
+      - path: /api/observability
+        pathType: Prefix
+        backend:
+          service:
+            name: observability
+            port:
+              number: 8305
+      # Phase 1 Services
+      - path: /api/fraud-shield
+        pathType: Prefix
+        backend:
+          service:
+            name: fraud-shield
+            port:
+              number: 8306
+      # Phase 3 Services
+      - path: /api/memory-vault
+        pathType: Prefix
+        backend:
+          service:
+            name: memory-vault
+            port:
+              number: 8307
+      - path: /api/commerce-rails
+        pathType: Prefix
+        backend:
+          service:
+            name: commerce-rails
+            port:
+              number: 8308
+      - path: /api/commerce-protocol
+        pathType: Prefix
+        backend:
+          service:
+            name: commerce-protocol
+            port:
+              number: 8309
+      - path: /api/marketplace
+        pathType: Prefix
+        backend:
+          service:
+            name: marketplace
+            port:
+              number: 8310
+      - path: /api/developer-hub
+        pathType: Prefix
+        backend:
+          service:
+            name: developer-hub
+            port:
+              number: 8311
+      - path: /api/contract-manager
+        pathType: Prefix
+        backend:
+          service:
+            name: contract-manager
+            port:
+              number: 8312
+      # Phase 4 Services
+      - path: /api/procurement-hub
+        pathType: Prefix
+        backend:
+          service:
+            name: procurement-hub
+            port:
+              number: 8313
+      - path: /api/finance-rail
+        pathType: Prefix
+        backend:
+          service:
+            name: finance-rail
+            port:
+              number: 8314
+      # Keep gateway as fallback
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aep-gateway
+            port:
+              number: 8300
+  tls:
+  - hosts:
+    - aep-api.rt19.runtimeai.io
+    secretName: aep-api-rt19-tls

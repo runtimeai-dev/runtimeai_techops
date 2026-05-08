@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-black-box
+  namespace: aep
+  labels:
+    app: audit-black-box
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: audit-black-box
+  template:
+    metadata:
+      labels:
+        app: audit-black-box
+    spec:
+      containers:
+        - name: audit-black-box
+          image: runtimeaicr.azurecr.io/aep/audit-black-box:latest
+          ports:
+            - containerPort: 8303
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8303"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8303
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8303
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-black-box
+  namespace: aep
+spec:
+  selector:
+    app: audit-black-box
+  ports:
+    - port: 8303
+      targetPort: 8303
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: audit-black-box-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: audit-black-box

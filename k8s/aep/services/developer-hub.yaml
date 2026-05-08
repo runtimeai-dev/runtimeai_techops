@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: developer-hub
+  namespace: aep
+  labels:
+    app: developer-hub
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: developer-hub
+  template:
+    metadata:
+      labels:
+        app: developer-hub
+    spec:
+      containers:
+        - name: developer-hub
+          image: runtimeaicr.azurecr.io/aep/developer-hub:latest
+          ports:
+            - containerPort: 8311
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8311"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8311
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8311
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: acr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: developer-hub
+  namespace: aep
+spec:
+  selector:
+    app: developer-hub
+  ports:
+    - port: 8311
+      targetPort: 8311
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: developer-hub-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: developer-hub

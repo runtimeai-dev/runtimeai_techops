@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aep-admin
+  namespace: aep
+  labels:
+    app: aep-admin
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aep-admin
+  template:
+    metadata:
+      labels:
+        app: aep-admin
+    spec:
+      containers:
+        - name: aep-admin
+          image: runtimeaicr.azurecr.io/aep/aep-admin:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            - name: AUTH_UPSTREAM
+              value: "aep-auth-service.aep.svc.cluster.local:8350"
+            - name: ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aep-secrets
+                  key: ADMIN_SECRET
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aep-admin
+  namespace: aep
+spec:
+  selector:
+    app: aep-admin
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aep-admin-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aep-admin
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aep-admin-ingress
+  namespace: aep
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aep-admin.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-admin
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - aep-admin.rt19.runtimeai.io
+      secretName: aep-admin-rt19-tls

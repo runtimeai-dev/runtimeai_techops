@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pii-shield
+  namespace: aep
+  labels:
+    app: pii-shield
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pii-shield
+  template:
+    metadata:
+      labels:
+        app: pii-shield
+    spec:
+      containers:
+        - name: pii-shield
+          image: runtimeaicr.azurecr.io/aep/pii-shield:latest
+          ports:
+            - containerPort: 8304
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8304"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8304
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8304
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pii-shield
+  namespace: aep
+spec:
+  selector:
+    app: pii-shield
+  ports:
+    - port: 8304
+      targetPort: 8304
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pii-shield-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pii-shield

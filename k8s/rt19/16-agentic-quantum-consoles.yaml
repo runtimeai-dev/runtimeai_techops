@@ -1,0 +1,157 @@
+# OPER_RT19-072c P0-020/P0-021: Agentic + Quantum federated console deployments.
+# These are the Module Federation remotes for OCC's Agentic and Quantum tabs.
+# Both are static SPA + nginx; DNS A record (Namecheap) needed before TLS issues.
+---
+# ─── AGENTIC CONSOLE ────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentic-console
+  namespace: rt19
+  labels:
+    app: agentic-console
+    runtimeai.io/track: "agentic"
+spec:
+  selector:
+    app: agentic-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-console
+  namespace: rt19
+  labels:
+    app: agentic-console
+    runtimeai.io/track: "agentic"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentic-console
+  template:
+    metadata:
+      labels:
+        app: agentic-console
+    spec:
+      containers:
+        - name: nginx
+          image: runtimeaicr.azurecr.io/agentic-console:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [agentic.rt19.runtimeai.io]
+      secretName: agentic-rt19-tls
+  rules:
+    - host: agentic.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-console
+                port: { number: 80 }
+---
+# ─── QUANTUM CONSOLE (qutonomous-dashboard) ─────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantum-console
+  namespace: rt19
+  labels:
+    app: quantum-console
+    runtimeai.io/track: "pqdata"
+spec:
+  selector:
+    app: quantum-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantum-console
+  namespace: rt19
+  labels:
+    app: quantum-console
+    runtimeai.io/track: "pqdata"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quantum-console
+  template:
+    metadata:
+      labels:
+        app: quantum-console
+    spec:
+      containers:
+        - name: nginx
+          image: runtimeaicr.azurecr.io/quantum-console:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quantum-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [quantum.rt19.runtimeai.io]
+      secretName: quantum-rt19-tls
+  rules:
+    - host: quantum.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: quantum-console
+                port: { number: 80 }

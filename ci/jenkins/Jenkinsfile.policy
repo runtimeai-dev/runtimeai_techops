@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                dir('sdk/policy') {
+                    sh 'npm ci'
+                    sh 'npm run build'
+                }
+            }
+        }
+        
+        stage('Lint Policy') {
+            steps {
+                dir('sdk/policy') {
+                    sh 'node dist/cli.js lint dist/comprehensive_policy.js'
+                }
+            }
+        }
+        
+        stage('Test Policy') {
+            steps {
+                dir('sdk/policy') {
+                    sh 'node dist/cli.js test dist/comprehensive_policy.js'
+                }
+            }
+        }
+        
+        stage('Impact Analysis') {
+            when {
+                changeRequest()
+            }
+            steps {
+                dir('sdk/policy') {
+                    // In real scenario, fetch logs from artifact store
+                    sh 'cp sample_logs.json /tmp/logs.json'
+                    sh 'node dist/cli.js replay dist/comprehensive_policy.js --logs /tmp/logs.json'
+                }
+            }
+        }
+        
+        stage('Publish') {
+            when {
+                branch 'main'
+            }
+            steps {
+                dir('sdk/policy') {
+                    sh 'node dist/cli.js push dist/comprehensive_policy.js'
+                }
+            }
+        }
+    }
+}

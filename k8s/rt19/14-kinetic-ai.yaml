@@ -1,0 +1,143 @@
+# Kinetic AI — rt19 manifests (OPER_RT19-075)
+#
+# Pre-req in rt19:
+#   - Postgres available via the shared postgres service.
+#   - Secret `kinetic-ai-secrets` must exist: DATABASE_URL, AUTH_JWT_ISSUER.
+#   - auth-svc, billing-service, ml-intelligence-service already deployed.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kinetic-ai-service
+  namespace: rt19
+  labels:
+    app: kinetic-ai-service
+    runtimeai.io/track: "2"
+spec:
+  selector:
+    app: kinetic-ai-service
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kinetic-ai-service
+  namespace: rt19
+  labels:
+    app: kinetic-ai-service
+    runtimeai.io/track: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kinetic-ai-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: kinetic-ai-service
+    spec:
+      containers:
+        - name: app
+          image: runtimeaicr.azurecr.io/kinetic-ai-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8096
+          env:
+            - { name: PORT,                   value: "8096" }
+            - { name: ENFORCE_JWT,            value: "true" }
+            - { name: ENFORCE_MIGRATIONS,     value: "true" }
+            - { name: RUNTIME_ENVIRONMENT,    value: "production" }
+            - { name: AUTH_JWKS_URL,          value: "http://auth-svc:8097/.well-known/jwks.json" }
+            - { name: CONTROL_PLANE_URL,      value: "http://control-plane:8080" }
+            - { name: QUANTUM_VAULT_URL,      value: "http://quantum-vault.pqdata.svc.cluster.local:8200" }
+            - { name: PQ_SIGN_URL,            value: "http://pq-sign.pqdata.svc.cluster.local:8206" }
+            - { name: AUDIT_LOG_URL,          value: "http://audit-black-box.aep.svc.cluster.local:8303" }
+            - { name: ENFORCE_TPM_ATTESTATION, value: "true" }
+            - { name: KILL_SWITCH_L1_SLA_MS,  value: "500" }
+            - { name: KILL_SWITCH_L3_FLEET_SLA_S, value: "5" }
+            - { name: OTA_CANARY_DEFAULT_PCT,  value: "5" }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: kinetic-ai-secrets, key: DATABASE_URL } }
+            - name: AUTH_JWT_ISSUER
+              valueFrom: { secretKeyRef: { name: kinetic-ai-secrets, key: AUTH_JWT_ISSUER } }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8096 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8096 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 1000m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kinetic-console
+  namespace: rt19
+  labels:
+    app: kinetic-console
+    runtimeai.io/track: "2"
+spec:
+  selector:
+    app: kinetic-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kinetic-console
+  namespace: rt19
+  labels:
+    app: kinetic-console
+    runtimeai.io/track: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kinetic-console
+  template:
+    metadata:
+      labels:
+        app: kinetic-console
+    spec:
+      containers:
+        - name: nginx
+          image: runtimeaicr.azurecr.io/kinetic-console:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kinetic-ai-secrets
+  namespace: rt19
+type: Opaque
+data:
+  # Base64 encoded values — set actual values manually on the cluster:
+  #   kubectl create secret generic kinetic-ai-secrets -n rt19 \
+  #     --from-literal=DATABASE_URL='postgres://...' \
+  #     --from-literal=AUTH_JWT_ISSUER='auth.runtimeai.com'
+  DATABASE_URL: ""
+  AUTH_JWT_ISSUER: ""

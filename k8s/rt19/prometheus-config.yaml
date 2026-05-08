@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: aep
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+    scrape_configs:
+      - job_name: 'fraud-shield'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - aep
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: fraud-shield
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: '8306'
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: job
+
+      - job_name: 'memory-vault'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - aep
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: memory-vault
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: '8307'
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: job
+
+      - job_name: 'marketplace'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - aep
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: marketplace
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: '8310'
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: job
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: aep-alerts
+  namespace: aep
+spec:
+  groups:
+    - name: aep-services
+      interval: 30s
+      rules:
+        # Error rate > 1%
+        - alert: AEPHighErrorRate
+          expr: |
+            (sum(rate(fraud_shield_requests_total{status_code=~"5.."}[5m])) by (job)
+            / sum(rate(fraud_shield_requests_total[5m])) by (job)) > 0.01
+            or
+            (sum(rate(memory_vault_requests_total{status_code=~"5.."}[5m])) by (job)
+            / sum(rate(memory_vault_requests_total[5m])) by (job)) > 0.01
+            or
+            (sum(rate(marketplace_requests_total{status_code=~"5.."}[5m])) by (job)
+            / sum(rate(marketplace_requests_total[5m])) by (job)) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate on {{ $labels.job }}"
+            description: "Error rate > 1% on {{ $labels.job }} for 5+ minutes"
+
+        # P99 latency > 500ms
+        - alert: AEPHighLatency
+          expr: |
+            histogram_quantile(0.99, sum(rate(fraud_shield_request_duration_seconds_bucket[5m])) by (job, le)) > 0.5
+            or
+            histogram_quantile(0.99, sum(rate(memory_vault_request_duration_seconds_bucket[5m])) by (job, le)) > 0.5
+            or
+            histogram_quantile(0.99, sum(rate(marketplace_request_duration_seconds_bucket[5m])) by (job, le)) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High latency on {{ $labels.job }}"
+            description: "P99 latency > 500ms on {{ $labels.job }} for 5+ minutes"
+
+        # Pod crash loop
+        - alert: AEPPodCrashLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{pod=~"fraud-shield.*|memory-vault.*|marketplace.*"}[15m]) > 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod crash loop detected: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in 15 minutes"
+
+        # Database connection failures
+        - alert: AEPDatabaseUnavailable
+          expr: |
+            up{job=~"fraud-shield|memory-vault|marketplace"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Database connection unavailable for {{ $labels.job }}"
+            description: "{{ $labels.job }} cannot reach the database"

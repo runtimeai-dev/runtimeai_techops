@@ -1,0 +1,136 @@
+# Omni Command Center — rt19 manifests (OCC-000..016)
+#
+# Pre-req in rt19:
+#   - Postgres available via the shared postgres service.
+#   - Secret `omni-command-center-secrets` must exist: DATABASE_URL.
+#   - auth-svc, ml-intelligence-service, audit-black-box (aep) deployed.
+#   - nhi-security-service and cloud-security-service deployed (remote modules).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omni-gateway-config
+  namespace: rt19
+  labels:
+    app: omni-gateway
+    runtimeai.io/track: "occ"
+data:
+  PORT: "8100"
+  ENFORCE_JWT: "true"
+  AUTH_JWKS_URL: "http://auth-svc:8097/.well-known/jwks.json"
+  ML_SERVICE_URL: "http://ml-intelligence-service:8095"
+  AUDIT_LOG_URL: "http://audit-black-box.aep.svc.cluster.local:8303"
+  CONTROL_PLANE_URL: "http://control-plane:8080"
+  # Remote module registry — Track 2 + Track 3 consoles exposed as federation remotes
+  NHI_CONSOLE_URL: "http://nhi-security-console"
+  CLOUD_SECURITY_CONSOLE_URL: "http://cloud-security-console"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: omni-gateway
+  namespace: rt19
+  labels:
+    app: omni-gateway
+    runtimeai.io/track: "occ"
+spec:
+  selector:
+    app: omni-gateway
+  ports:
+    - name: http
+      port: 8100
+      targetPort: 8100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-gateway
+  namespace: rt19
+  labels:
+    app: omni-gateway
+    runtimeai.io/track: "occ"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: omni-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: omni-gateway
+    spec:
+      containers:
+        - name: omni-gateway
+          image: runtimeaicr.azurecr.io/omni-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8100
+          envFrom:
+            - configMapRef: { name: omni-gateway-config }
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: omni-command-center-secrets, key: DATABASE_URL } }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8100 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits:   { cpu: 2000m, memory: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: omni-shell
+  namespace: rt19
+  labels:
+    app: omni-shell
+    runtimeai.io/track: "occ"
+spec:
+  selector:
+    app: omni-shell
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-shell
+  namespace: rt19
+  labels:
+    app: omni-shell
+    runtimeai.io/track: "occ"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: omni-shell
+  template:
+    metadata:
+      labels:
+        app: omni-shell
+    spec:
+      containers:
+        - name: nginx
+          image: runtimeaicr.azurecr.io/omni-shell:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }

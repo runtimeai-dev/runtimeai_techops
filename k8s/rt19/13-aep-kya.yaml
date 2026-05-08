@@ -1,0 +1,136 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kya
+  namespace: aep
+  labels:
+    app: kya
+    service: kya
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8301
+    targetPort: 8301
+    protocol: TCP
+    name: http
+  selector:
+    app: kya
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kya
+  namespace: aep
+  labels:
+    app: kya
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kya
+  template:
+    metadata:
+      labels:
+        app: kya
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+      - name: kya
+        image: runtimeaicr.azurecr.io/aep/kya:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8301
+          name: http
+        env:
+        - name: PORT
+          value: "8301"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aep-postgres
+              key: dsn
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: aep-secrets
+              key: jwt-secret
+        - name: ENFORCE_JWT
+          value: "true"
+        - name: ENFORCE_BOT_CA
+          value: "false"
+        - name: BOT_CA_URL
+          value: "http://bot-ca.runtimeai-enterprise.svc.cluster.local:8080"
+        - name: COST_CONTROL_URL
+          value: "http://cost-control.aep.svc.cluster.local:8302"
+        - name: COMMERCE_RAILS_URL
+          value: "http://commerce-rails.aep.svc.cluster.local:8308"
+        - name: FRAUD_SHIELD_URL
+          value: "http://fraud-shield.aep.svc.cluster.local:8306"
+        resources:
+          requests:
+            cpu: 150m
+            memory: 192Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8301
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8301
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kya
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kya-hpa
+  namespace: aep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kya
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

@@ -1,0 +1,45 @@
+# OPER_RT19-084c — Public ingress for the MCP gateway on rt19.
+# Per-cluster sub-domain. The root domain mcp.runtimeai.io is fronted by
+# Azure Front Door which routes to one of these per-cluster ingresses
+# based on tenant stickiness (OPER_RT19-084p).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-gateway-ingress
+  namespace: rt19
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+    # SSE pass-through for streaming tools
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # CORS allowlist (browser-resident agents). Wildcard never used.
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.rt19.runtimeai.io,https://omni.rt19.runtimeai.io,https://developers.runtimeai.io"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "600"
+    # Permissions-Policy header (KAI-200 lesson — re-applied here)
+    # OPER_RT19-084 Q18 — mTLS pass-through so the gateway sees the client cert.
+    # Optional auth: agents that present a Bot-CA-issued cert get verified;
+    # bare requests fall through to JWT-only validation at the gateway.
+    nginx.ingress.kubernetes.io/auth-tls-secret: "rt19/bot-ca-trust"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "optional_no_ca"
+    nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: mcp.rt19.runtimeai.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mcp-gateway
+            port:
+              number: 8091
+  tls:
+  - hosts: [mcp.rt19.runtimeai.io]
+    secretName: mcp-rt19-tls

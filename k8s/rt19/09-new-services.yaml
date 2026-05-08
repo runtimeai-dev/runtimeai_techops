@@ -1,0 +1,195 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# rt19 New Services — Identity DNS + ML Intelligence
+#
+# DEPLOYMENT ORDER: Deploy AFTER 08-platform-services.yaml is validated
+# PHASE: 5 — New services for Equinix trial delivery
+#
+# ⚠️ DEPLOY & TEST:
+#   1. Apply this manifest:  kubectl apply -f 09-new-services.yaml
+#   2. Wait for pods:        kubectl get pods -n rt19 -l tier=new -w
+#   3. Run smoke test:       curl health endpoints
+#   4. Only proceed after all pods are Running/Ready
+#
+# Services in this manifest:
+#   - identity-dns (DNS resolution for agent identities, DoH gateway)
+#   - ml-intelligence-service (ML inference, model registry, feature store)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  Identity DNS Service                                                       │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# ── Identity DNS (Agent DNS Resolution + DoH Gateway) ────────────────────────
+# Resolves agent identities to endpoints via DNS (RFC 1035) and DoH (RFC 8484).
+# Queries agents table for endpoint lookup, scoped by tenant_id.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-dns
+  namespace: rt19
+  labels:
+    app: identity-dns
+    tier: new
+    component: identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-dns
+  template:
+    metadata:
+      labels:
+        app: identity-dns
+        tier: new
+    spec:
+      containers:
+        - name: identity-dns
+          image: runtimeaicr.azurecr.io/identity-dns:latest
+          ports:
+            - containerPort: 8053
+              name: doh
+            - containerPort: 1053
+              name: dns-udp
+              protocol: UDP
+            - containerPort: 1053
+              name: dns-tcp
+              protocol: TCP
+          env:
+            - name: DOH_PORT
+              value: "8053"
+            - name: DNS_PORT
+              value: "1053"
+            - name: DOMAIN
+              value: "runtimeai.io."
+            - name: UPSTREAM_DNS
+              value: "8.8.8.8:53"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8053
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8053
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-dns
+  namespace: rt19
+  labels:
+    tier: new
+spec:
+  selector:
+    app: identity-dns
+  ports:
+    - name: doh
+      port: 8053
+      targetPort: 8053
+    - name: dns-udp
+      port: 1053
+      targetPort: 1053
+      protocol: UDP
+    - name: dns-tcp
+      port: 1053
+      targetPort: 1053
+      protocol: TCP
+  type: ClusterIP
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  ML Intelligence Service                                                    │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# ── ML Intelligence Service (Model Registry, Feature Store, Inference) ───────
+# Provides ML capabilities: model lifecycle management, feature store,
+# real-time inference for risk scoring and behavioral analysis.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-intelligence-service
+  namespace: rt19
+  labels:
+    app: ml-intelligence-service
+    tier: new
+    component: ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-intelligence-service
+  template:
+    metadata:
+      labels:
+        app: ml-intelligence-service
+        tier: new
+    spec:
+      containers:
+        - name: ml-intelligence-service
+          image: runtimeaicr.azurecr.io/ml-intelligence-service:latest
+          ports:
+            - containerPort: 8095
+          env:
+            - name: PORT
+              value: "8095"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-intelligence-service
+  namespace: rt19
+  labels:
+    tier: new
+spec:
+  selector:
+    app: ml-intelligence-service
+  ports:
+    - port: 8095
+      targetPort: 8095
+  type: ClusterIP

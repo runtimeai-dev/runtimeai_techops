@@ -1,0 +1,388 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# rt19 Data Plane Services
+#
+# DEPLOYMENT ORDER: Deploy AFTER 03-services.yaml (control-plane must be running)
+# PHASE: 1 (Tier 1 — Core Enforcement Layer)
+#
+# ⚠️ DEPLOY & TEST INCREMENTALLY:
+#   1. Apply this manifest:  kubectl apply -f 07-dataplane.yaml
+#   2. Wait for pods:        kubectl get pods -n rt19 -l tier=dataplane -w
+#   3. Run smoke test:       ./smoke_test_rt19.sh --verbose
+#   4. Verify DP health:     curl -s https://api.rt19.runtimeai.io/api/dp/health
+#   5. Only proceed to 08-platform-services.yaml after all DP pods are Running
+#
+# Services in this manifest:
+#   - flow-enforcer (Envoy + WASM inline policy enforcement)
+#   - waf (OpenResty — SQLi, XSS, prompt injection blocking)
+#   - data-proxy (PII/DLP scanning — 25+ regex patterns)
+#   - cost-ledger (token metering, budget enforcement)
+#   - drift-engine (behavioral anomaly detection, baseline tracking)
+# ═══════════════════════════════════════════════════════════════════════════════
+---
+# ── Flow Enforcer (Envoy + WASM) ──────────────────────────────────────────────
+# The inline policy enforcement gateway. ALL agent traffic passes through here.
+# Handles: JWT auth, kill switch, quota, budget check, egress policy, DLP/PII,
+#          API key injection, token counting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flow-enforcer
+  namespace: rt19
+  labels:
+    app: flow-enforcer
+    tier: dataplane
+    component: enforcement
+spec:
+  replicas: 2  # HA — inline on critical path
+  selector:
+    matchLabels:
+      app: flow-enforcer
+  template:
+    metadata:
+      labels:
+        app: flow-enforcer
+        tier: dataplane
+    spec:
+      containers:
+        - name: flow-enforcer
+          image: runtimeaicr.azurecr.io/flow-enforcer:latest
+          ports:
+            - containerPort: 8092
+              name: http
+            - containerPort: 8001
+              name: admin
+          env:
+            - name: INTERNAL_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flow-enforcer
+  namespace: rt19
+  labels:
+    tier: dataplane
+spec:
+  selector:
+    app: flow-enforcer
+  ports:
+    - name: http
+      port: 8092
+      targetPort: 8092
+    - name: admin
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP
+---
+# ── WAF (OpenResty) ──────────────────────────────────────────────────────────
+# Web Application Firewall — blocks SQLi, XSS, prompt injection attacks.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waf
+  namespace: rt19
+  labels:
+    app: waf
+    tier: dataplane
+    component: security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: waf
+  template:
+    metadata:
+      labels:
+        app: waf
+        tier: dataplane
+    spec:
+      containers:
+        - name: waf
+          image: runtimeaicr.azurecr.io/waf:latest
+          ports:
+            - containerPort: 8101
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8101
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8101
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: waf
+  namespace: rt19
+  labels:
+    tier: dataplane
+spec:
+  selector:
+    app: waf
+  ports:
+    - port: 8101
+      targetPort: 8101
+  type: ClusterIP
+---
+# ── Data Proxy (DLP/PII Scanner) ─────────────────────────────────────────────
+# Scans request/response bodies for PII patterns (SSN, CC, email, etc.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-proxy
+  namespace: rt19
+  labels:
+    app: data-proxy
+    tier: dataplane
+    component: dlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-proxy
+  template:
+    metadata:
+      labels:
+        app: data-proxy
+        tier: dataplane
+    spec:
+      containers:
+        - name: data-proxy
+          image: runtimeaicr.azurecr.io/data-proxy:latest
+          ports:
+            - containerPort: 8100
+          env:
+            - name: DATA_PROXY_PORT
+              value: "8100"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8100
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # ⚠️ Named dp-proxy (NOT data-proxy) to avoid K8s env collision:
+  # K8s auto-injects DATA_PROXY_PORT=tcp://... for a service named data-proxy,
+  # which conflicts with the Go env var DATA_PROXY_PORT.
+  name: dp-proxy
+  namespace: rt19
+  labels:
+    tier: dataplane
+spec:
+  selector:
+    app: data-proxy
+  ports:
+    - port: 8100
+      targetPort: 8100
+  type: ClusterIP
+---
+# ── Cost Ledger (Token Metering) ─────────────────────────────────────────────
+# Real-time token counting, cost attribution, and budget enforcement.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cost-ledger
+  namespace: rt19
+  labels:
+    app: cost-ledger
+    tier: dataplane
+    component: metering
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cost-ledger
+  template:
+    metadata:
+      labels:
+        app: cost-ledger
+        tier: dataplane
+    spec:
+      containers:
+        - name: cost-ledger
+          image: runtimeaicr.azurecr.io/cost-ledger:latest
+          ports:
+            - containerPort: 8102
+          env:
+            - name: PORT
+              value: "8102"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8102
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8102
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cost-ledger
+  namespace: rt19
+  labels:
+    tier: dataplane
+spec:
+  selector:
+    app: cost-ledger
+  ports:
+    - port: 8102
+      targetPort: 8102
+  type: ClusterIP
+---
+# ── Drift Engine (Behavioral Anomaly Detection) ──────────────────────────────
+# Tracks agent behavior baselines and detects drift/anomalies.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drift-engine
+  namespace: rt19
+  labels:
+    app: drift-engine
+    tier: dataplane
+    component: behavioral
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drift-engine
+  template:
+    metadata:
+      labels:
+        app: drift-engine
+        tier: dataplane
+    spec:
+      containers:
+        - name: drift-engine
+          image: runtimeaicr.azurecr.io/drift-engine:latest
+          ports:
+            - containerPort: 8083
+          env:
+            - name: HTTP_PORT
+              value: "8083"
+            - name: GRPC_PORT
+              value: "50051"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drift-engine
+  namespace: rt19
+  labels:
+    tier: dataplane
+spec:
+  selector:
+    app: drift-engine
+  ports:
+    - port: 8083
+      targetPort: 8083
+  type: ClusterIP

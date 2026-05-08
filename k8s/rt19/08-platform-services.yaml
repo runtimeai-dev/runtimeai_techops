@@ -1,0 +1,680 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# rt19 Platform Services
+#
+# DEPLOYMENT ORDER: Deploy AFTER 07-dataplane.yaml is validated
+# PHASE: 2-4 (Tier 2-4 — Platform, Advanced, FedRAMP services)
+#
+# ⚠️ DEPLOY & TEST INCREMENTALLY:
+#   1. Apply this manifest:  kubectl apply -f 08-platform-services.yaml
+#   2. Wait for pods:        kubectl get pods -n rt19 -l tier=platform -w
+#   3. Run smoke test:       ./smoke_test_rt19.sh --verbose
+#   4. Only proceed after all pods are Running/Ready
+#
+# Services in this manifest:
+#   Phase 2 — Platform:
+#     - vendor-wrapper (OPA-enforced LLM vendor proxy)
+#     - bot-ca (X.509 cert issuance, reputation, anti-swarm)
+#     - vault-broker (multi-cloud secrets management)
+#   Phase 3 — Advanced:
+#     - policy-manager (OPA/Rego engine, Flask)
+#     - network-analyzer (packet capture, NET_ADMIN required)
+#     - sequence-modeler (LSTM behavioral patterns)
+#     - bundle-cache (OPA bundle caching for flow-enforcer)
+#   Phase 4 — FedRAMP:
+#     - verifier (TPM attestation, PCR validation)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  PHASE 2 — Platform Services                                              │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# ── Vendor Wrapper (OPA-Enforced LLM Proxy) ──────────────────────────────────
+# Proxies agent requests to LLM vendors (OpenAI, Anthropic, etc.)
+# Enforces OPA policies on which models/vendors each tenant can use.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vendor-wrapper
+  namespace: rt19
+  labels:
+    app: vendor-wrapper
+    tier: platform
+    component: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vendor-wrapper
+  template:
+    metadata:
+      labels:
+        app: vendor-wrapper
+        tier: platform
+    spec:
+      containers:
+        - name: vendor-wrapper
+          image: runtimeaicr.azurecr.io/vendor-wrapper:latest
+          ports:
+            - containerPort: 8103
+          env:
+            - name: VENDOR_WRAPPER_PORT
+              value: "8103"
+            - name: TARGET_URL
+              value: "https://api.anthropic.com"
+            - name: OPA_URL
+              value: "http://opa:8181/v1/data/vendor/allow"
+            - name: REQUEST_TIMEOUT
+              value: "120"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+            - name: INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: INTERNAL_SERVICE_TOKEN
+            - name: VAULT_BROKER_URL
+              value: "http://vault-broker:8097"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8103
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8103
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # ⚠️ Named vw-proxy (NOT vendor-wrapper) to avoid K8s env collision:
+  # K8s auto-injects VENDOR_WRAPPER_PORT=tcp://... for a service named vendor-wrapper,
+  # which conflicts with the Go env var VENDOR_WRAPPER_PORT.
+  name: vw-proxy
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: vendor-wrapper
+  ports:
+    - port: 8103
+      targetPort: 8103
+  type: ClusterIP
+---
+# ── Bot CA (X.509 Certificates, Reputation, Anti-Swarm) ──────────────────────
+# Issues/revokes X.509 certificates for agent identity.
+# Also handles cert-manager functionality (consolidated).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot-ca
+  namespace: rt19
+  labels:
+    app: bot-ca
+    tier: platform
+    component: identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot-ca
+  template:
+    metadata:
+      labels:
+        app: bot-ca
+        tier: platform
+    spec:
+      containers:
+        - name: bot-ca
+          image: runtimeaicr.azurecr.io/bot-ca:latest
+          ports:
+            - containerPort: 8099
+          env:
+            - name: PORT
+              value: "8099"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8099
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8099
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bot-ca
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: bot-ca
+  ports:
+    - port: 8099
+      targetPort: 8099
+  type: ClusterIP
+---
+# ── Vault Broker (Multi-Cloud Secrets) ───────────────────────────────────────
+# Unified interface for secrets from Azure Key Vault, AWS Secrets Manager,
+# and HashiCorp Vault. Used by flow-enforcer for API key injection.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-broker
+  namespace: rt19
+  labels:
+    app: vault-broker
+    tier: platform
+    component: secrets
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-broker
+  template:
+    metadata:
+      labels:
+        app: vault-broker
+        tier: platform
+    spec:
+      containers:
+        - name: vault-broker
+          image: runtimeaicr.azurecr.io/vault-broker:latest
+          ports:
+            - containerPort: 8097
+          env:
+            - name: PORT
+              value: "8097"
+            - name: VAULT_PROVIDER
+              value: "azure"
+            - name: AZURE_KEY_VAULT_URL
+              value: "https://runtimeai-rt19-kv.vault.azure.net"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: AZURE_KEY_VAULT_NAME
+              value: "runtimeai-rt19-kv"
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8097
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8097
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-broker
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: vault-broker
+  ports:
+    - port: 8097
+      targetPort: 8097
+  type: ClusterIP
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  PHASE 3 — Advanced Services                                              │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# ── Policy Manager (OPA/Rego Engine) ─────────────────────────────────────────
+# Flask service for OPA policy evaluation, Rego rule management, bundle signing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-manager
+  namespace: rt19
+  labels:
+    app: policy-manager
+    tier: platform
+    component: policy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-manager
+  template:
+    metadata:
+      labels:
+        app: policy-manager
+        tier: platform
+    spec:
+      containers:
+        - name: policy-manager
+          image: runtimeaicr.azurecr.io/policy-manager:latest
+          ports:
+            - containerPort: 8093
+          env:
+            - name: PORT
+              value: "8093"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8093
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8093
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-manager
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: policy-manager
+  ports:
+    - port: 8093
+      targetPort: 8093
+  type: ClusterIP
+---
+# ── Network Analyzer (Packet Capture) ────────────────────────────────────────
+# ⚠️ Requires NET_ADMIN capability for packet capture.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: network-analyzer
+  namespace: rt19
+  labels:
+    app: network-analyzer
+    tier: platform
+    component: discovery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: network-analyzer
+  template:
+    metadata:
+      labels:
+        app: network-analyzer
+        tier: platform
+    spec:
+      containers:
+        - name: network-analyzer
+          image: runtimeaicr.azurecr.io/network-analyzer:latest
+          ports:
+            - containerPort: 8106
+          env:
+            - name: PORT
+              value: "8106"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]  # Required for packet capture
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8106
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8106
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: network-analyzer
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: network-analyzer
+  ports:
+    - port: 8106
+      targetPort: 8106
+  type: ClusterIP
+---
+# ── Sequence Modeler (LSTM Behavioral Patterns) ──────────────────────────────
+# Multi-step behavioral pattern detection using LSTM sequences.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sequence-modeler
+  namespace: rt19
+  labels:
+    app: sequence-modeler
+    tier: platform
+    component: behavioral
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sequence-modeler
+  template:
+    metadata:
+      labels:
+        app: sequence-modeler
+        tier: platform
+    spec:
+      containers:
+        - name: sequence-modeler
+          image: runtimeaicr.azurecr.io/sequence-modeler:latest
+          ports:
+            - containerPort: 8096
+          env:
+            - name: PORT
+              value: "8096"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8096
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8096
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sequence-modeler
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: sequence-modeler
+  ports:
+    - port: 8096
+      targetPort: 8096
+  type: ClusterIP
+---
+# ── Bundle Cache (OPA Bundle Caching) ────────────────────────────────────────
+# Caches OPA policy bundles for flow-enforcer. Also provides kill-switch
+# and quota check endpoints used by the WASM filter.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bundle-cache
+  namespace: rt19
+  labels:
+    app: bundle-cache
+    tier: platform
+    component: policy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bundle-cache
+  template:
+    metadata:
+      labels:
+        app: bundle-cache
+        tier: platform
+    spec:
+      containers:
+        - name: bundle-cache
+          image: runtimeaicr.azurecr.io/bundle-cache:latest
+          ports:
+            - containerPort: 8094
+          env:
+            - name: POLICY_MANAGER
+              value: "http://policy-manager:8093"
+            - name: POLL_SECONDS
+              value: "10"
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: OPA_URL
+              value: "http://opa:8181"
+            - name: OPA_RESYNC_SECONDS
+              value: "60"
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+            - name: INTERNAL_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: INTERNAL_SERVICE_TOKEN
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8094
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8094
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bundle-cache
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: bundle-cache
+  ports:
+    - port: 8094
+      targetPort: 8094
+  type: ClusterIP
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  PHASE 4 — FedRAMP Services (deploy when needed for compliance)           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+---
+# ── Verifier (TPM Attestation) ───────────────────────────────────────────────
+# Hardware-backed identity: PCR validation, golden measurements, attestation.
+# Uses software TPM in cloud (no physical TPM on AKS nodes).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verifier
+  namespace: rt19
+  labels:
+    app: verifier
+    tier: platform
+    component: attestation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: verifier
+  template:
+    metadata:
+      labels:
+        app: verifier
+        tier: platform
+    spec:
+      containers:
+        - name: verifier
+          image: runtimeaicr.azurecr.io/verifier:latest
+          ports:
+            - containerPort: 8108
+          env:
+            - name: PORT
+              value: "8108"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: SOFTWARE_TPM
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8108
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8108
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: verifier
+  namespace: rt19
+  labels:
+    tier: platform
+spec:
+  selector:
+    app: verifier
+  ports:
+    - port: 8108
+      targetPort: 8108
+  type: ClusterIP

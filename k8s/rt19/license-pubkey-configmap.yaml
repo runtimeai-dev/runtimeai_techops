@@ -1,0 +1,38 @@
+# OPER_RT19-104 §J — license public key + service URL ConfigMap.
+#
+# Distributes the canonical Ed25519 public key (matching license-service's
+# `embeddedCurrentPubHex`) to every consumer so they can verify license JWTs
+# without baking the key in at build time.
+#
+# The hex value here is the SAME value license-service publishes at
+# /api/v1/pubkey. Confirm before flipping ENFORCE_LICENSE on any consumer:
+#
+#   kubectl run -n rt19 --rm -it --image=curlimages/curl --restart=Never lp -- \
+#     curl -sS http://license-service:8220/api/v1/pubkey
+#
+# Production hardening (next phase): replace this ConfigMap with binary-
+# embedded values via go build -ldflags. Until then, env-injection means
+# the pubkey is tamper-evident (kubectl audit log) but not tamper-proof.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtimeai-license-pubkey
+  namespace: rt19
+data:
+  RUNTIMEAI_LICENSE_PUBKEY_HEX: "901aa8272b5a39e44b88d1c9c3ca62d28cde2258898822f33cc58f57d05e808f"
+  RUNTIMEAI_LICENSE_KID: "rtai-license-v1"
+  LICENSE_SERVICE_URL: "http://license-service.rt19.svc.cluster.local:8220"
+---
+# Same ConfigMap, scoped to the pqdata namespace for QuantumVault + pq-sign.
+# K8s ConfigMaps are namespace-scoped; we duplicate rather than coupling
+# pqdata to rt19's lifecycle.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtimeai-license-pubkey
+  namespace: pqdata
+data:
+  RUNTIMEAI_LICENSE_PUBKEY_HEX: "901aa8272b5a39e44b88d1c9c3ca62d28cde2258898822f33cc58f57d05e808f"
+  RUNTIMEAI_LICENSE_KID: "rtai-license-v1"
+  LICENSE_SERVICE_URL: "http://license-service.rt19.svc.cluster.local:8220"

@@ -1,0 +1,137 @@
+Attempting to fetch admin secret from container...
+DEBUG: API_KEY in tests is: '2a2fb00be432e501ed0c95d60545baef759761587f0693699e0118696dbfe8c4'
+=========================================
+MSFT-41 Through MSFT-46 Test Suite
+Testing 42 API Endpoints
+=========================================
+API Base: http://localhost:8080
+Tenant ID: acme-qa-org
+
+
+=========================================
+MSFT-41: Access Reviews (9 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/access-reviews - Create campaign
+Ensuring all agents have sponsors...
+[0;32m[PASS][0m Created campaign: cd8a530c-2c48-4c42-a1f9-77fde6a1fa21
+[1;33m[TEST][0m GET /api/access-reviews - List campaigns
+[0;32m[PASS][0m Listed 3 campaign(s)
+[1;33m[TEST][0m GET /api/access-reviews/{id} - Get campaign
+[0;32m[PASS][0m Retrieved campaign: Q1 2026 Access Review
+[1;33m[TEST][0m POST /api/access-reviews/{id}/start - Start campaign
+[0;31m[FAIL][0m Failed to start campaign
+[1;33m[TEST][0m GET /api/access-reviews/{id}/items - List review items
+[0;32m[PASS][0m Listed review items
+[1;33m[TEST][0m POST /api/access-reviews/{id}/items - Create review item
+jq: parse error: Invalid numeric literal at line 1, column 7
+[0;31m[FAIL][0m Failed to create review item
+[1;33m[TEST][0m POST /api/access-reviews/items/{id}/decide - Submit decision
+[0;31m[FAIL][0m Failed to submit decision
+[1;33m[TEST][0m POST /api/access-reviews/items/{id}/apply - Apply decision
+[0;31m[FAIL][0m Failed to apply decision. Response: 
+[1;33m[TEST][0m POST /api/access-reviews/{id}/stop - Stop campaign
+jq: parse error: Invalid numeric literal at line 1, column 7
+[0;31m[FAIL][0m Failed to stop campaign
+
+=========================================
+MSFT-42: Risk Scoring (7 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/risk/agents - Create risk agent
+[0;32m[PASS][0m Created risk agent: test-agent-789
+[1;33m[TEST][0m GET /api/risk/agents - List risk agents
+[0;32m[PASS][0m Listed 1 risk agent(s)
+[1;33m[TEST][0m GET /api/risk/agents/{id} - Get risk agent
+[0;32m[PASS][0m Retrieved risk agent with level: medium
+[1;33m[TEST][0m POST /api/risk/detections - Create detection
+[0;32m[PASS][0m Created detection: dfa4b8ed-378c-420f-ae4f-dd0747055b54
+[1;33m[TEST][0m GET /api/risk/detections - List detections
+[0;32m[PASS][0m Listed 3 detection(s)
+[1;33m[TEST][0m POST /api/risk/detections/{id}/dismiss - Dismiss detection
+[0;32m[PASS][0m Dismissed detection
+[1;33m[TEST][0m POST /api/risk/agents/{id}/confirm - Confirm status
+[0;32m[PASS][0m Confirmed agent status
+
+=========================================
+MSFT-43: OAuth Flows (6 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/oauth/credentials - Create credential
+[0;32m[PASS][0m Created OAuth credential: 7b9f77c7-9eac-4150-9ccb-68e2b2988959
+[1;33m[TEST][0m GET /api/oauth/credentials - List credentials
+[0;32m[PASS][0m Listed 5 credential(s)
+[1;33m[TEST][0m POST /api/oauth/token - Issue token
+jq: parse error: Invalid numeric literal at line 1, column 8
+[0;31m[FAIL][0m Failed to issue token. Response: invalid credentials
+[1;33m[TEST][0m POST /api/oauth/validate - Validate token
+jq: parse error: Invalid numeric literal at line 1, column 8
+[0;31m[FAIL][0m Failed to validate token
+[1;33m[TEST][0m POST /api/oauth/credentials/{id}/rotate - Rotate secret
+[0;32m[PASS][0m Rotated client secret
+[1;33m[TEST][0m POST /api/oauth/revoke - Revoke token
+[0;31m[FAIL][0m Failed to revoke token
+
+=========================================
+MSFT-44: Lifecycle Workflows (8 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/workflows - Create workflow
+[0;32m[PASS][0m Created workflow: 6240e77d-25ce-4be5-b3aa-d1565e2a4096
+[1;33m[TEST][0m GET /api/workflows - List workflows
+[0;32m[PASS][0m Listed 1 workflow(s)
+[1;33m[TEST][0m GET /api/workflows/{id} - Get workflow
+[0;32m[PASS][0m Retrieved workflow: Onboarding Workflow
+[1;33m[TEST][0m PUT /api/workflows/{id} - Update workflow
+[0;32m[PASS][0m Updated workflow
+[1;33m[TEST][0m POST /api/workflows/{id}/enable - Enable workflow
+[0;32m[PASS][0m Enabled workflow
+[1;33m[TEST][0m POST /api/workflows/{id}/execute - Execute workflow
+[0;32m[PASS][0m Executed workflow, run ID: db3bfbe2-4f08-4d2f-9ed6-41ab9847d0ee
+[1;33m[TEST][0m GET /api/workflows/{id}/runs - List runs
+[0;32m[PASS][0m Listed 1 run(s)
+[1;33m[TEST][0m DELETE /api/workflows/{id} - Delete workflow
+[0;32m[PASS][0m Deleted workflow
+
+=========================================
+MSFT-45: A2A Protocol (5 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/a2a/policies - Create policy
+[0;32m[PASS][0m Created A2A policy: 5f276704-72f6-471f-9cfd-013917781e4c
+[1;33m[TEST][0m GET /api/a2a/policies - List policies
+[0;32m[PASS][0m Listed 1 policy/policies
+[1;33m[TEST][0m POST /api/a2a/invoke - Invoke agent
+[0;31m[FAIL][0m Failed to invoke agent
+[1;33m[TEST][0m GET /api/a2a/messages - List messages
+jq: parse error: Invalid numeric literal at line 1, column 6
+./msft_41_46_tests.sh: line 585: [: : integer expression expected
+[0;31m[FAIL][0m Failed to list messages
+[1;33m[TEST][0m GET /api/a2a/discover - Discover agents
+[0;32m[PASS][0m Discovered agents
+
+=========================================
+MSFT-46: Compliance Dashboard (6 endpoints)
+=========================================
+[1;33m[TEST][0m POST /api/compliance/frameworks - Create framework
+[0;32m[PASS][0m Created framework: 78619c9f-3334-4cbd-bcdf-63056cf1b3f8
+[1;33m[TEST][0m GET /api/compliance/frameworks - List frameworks
+[0;32m[PASS][0m Listed 4 framework(s)
+[1;33m[TEST][0m GET /api/compliance/frameworks/{id} - Get framework
+[0;31m[FAIL][0m Failed to get framework
+[1;33m[TEST][0m GET /api/compliance/posture - Get posture
+[0;32m[PASS][0m Retrieved compliance posture
+[1;33m[TEST][0m POST /api/compliance/gaps - Create gap
+[0;32m[PASS][0m Created compliance gap: 88e0092d-251e-470f-a0cc-87b1887f39f8
+[1;33m[TEST][0m GET /api/compliance/gaps - List gaps
+[0;32m[PASS][0m Listed 3 gap(s)
+
+=========================================
+Admin: Tenant Stats (1 endpoint)
+=========================================
+[1;33m[TEST][0m GET /api/admin/tenants/{id}/stats - Get governance stats
+[0;31m[FAIL][0m Failed to get complete governance stats
+
+=========================================
+TEST SUMMARY
+=========================================
+Total Tests:  42
+[0;32mPassed:       30[0m
+[0;31mFailed:       12[0m
+
+[0;31m❌ SOME TESTS FAILED[0m

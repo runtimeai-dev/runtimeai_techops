@@ -1,0 +1,125 @@
+# OPER_RT19-058: eBPF Tap DaemonSet
+# Deploys the eBPF network tap collector on every schedulable node.
+# Captures outbound API traffic for LLM/shadow AI detection.
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ebpf-tap
+  namespace: rt19
+  labels:
+    app: ebpf-tap
+    component: data-plane
+spec:
+  selector:
+    matchLabels:
+      app: ebpf-tap
+  template:
+    metadata:
+      labels:
+        app: ebpf-tap
+        component: data-plane
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: ebpf-tap
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: collector
+        image: runtimeaicr.azurecr.io/ebpf-tap:latest
+        securityContext:
+          privileged: false
+          capabilities:
+            add:
+            - BPF
+            - NET_ADMIN
+            - SYS_RESOURCE
+        env:
+        - name: RUNTIMEAI_TENANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: rt19-app-secrets
+              key: TENANT_ID
+              optional: true
+        - name: RUNTIMEAI_CONTROL_PLANE_URL
+          value: "http://control-plane:8080"
+        - name: EBPF_INTERFACE
+          value: "eth0"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: PORT
+          value: "9090"
+        ports:
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 9090
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: proc
+          mountPath: /proc
+          readOnly: true
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ebpf-tap
+  namespace: rt19
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ebpf-tap
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ebpf-tap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ebpf-tap
+subjects:
+- kind: ServiceAccount
+  name: ebpf-tap
+  namespace: rt19

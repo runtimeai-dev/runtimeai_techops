@@ -1,0 +1,257 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aep-auth-service
+  namespace: aep
+  labels:
+    app: aep-auth-service
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: aep-auth-service
+  template:
+    metadata:
+      labels:
+        app: aep-auth-service
+    spec:
+      serviceAccountName: aep-auth-service
+      volumes:
+        # tmpfs for live secret material (per OPER_RT19-096 §9.K1). Never
+        # touches disk. Re-populated on every pod start by aep-vault-agent.
+        - name: aep-secrets-tmpfs
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+        # Bootstrap K8s Secret. Used as the source-of-truth ONLY when
+        # QV_TOKEN is not yet provisioned (i.e. before Qutonomous Vault
+        # auth integration is fully wired). Once QV_TOKEN exists, the
+        # vault-agent fetches from Qutonomous Vault and ignores this mount.
+        - name: aep-secrets-bootstrap
+          secret:
+            secretName: aep-auth-bootstrap
+            defaultMode: 0o444
+            optional: false
+      initContainers:
+        - name: vault-agent-init
+          image: runtimeaicr.azurecr.io/aep/aep-vault-agent:latest
+          imagePullPolicy: Always
+          env:
+            - name: MODE
+              value: "init"
+            - name: OUTPUT_DIR
+              value: "/run/secrets/aep"
+            - name: BOOTSTRAP_DIR
+              value: "/etc/secrets-bootstrap"
+            - name: QV_ADDR
+              value: "http://quantumvault.pqdata.svc.cluster.local:8200"
+            # QV_TOKEN comes from a separate Secret once Qutonomous Vault
+            # authn is provisioned. Until then, bootstrap path is used.
+            - name: QV_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aep-qv-token
+                  key: token
+                  optional: true
+            - name: SECRETS_MANIFEST
+              value: |
+                [
+                  {"name":"auth/jwt-signer.pem","key":"aep/auth/jwt-signer","format":"pem"},
+                  {"name":"auth/admin-secret","key":"aep/admin/secret","format":"raw"},
+                  {"name":"auth/smtp-pass","key":"aep/auth/smtp-pass","format":"raw"}
+                ]
+          volumeMounts:
+            - name: aep-secrets-tmpfs
+              mountPath: /run/secrets/aep
+            - name: aep-secrets-bootstrap
+              mountPath: /etc/secrets-bootstrap
+              readOnly: true
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: aep-auth-service
+          image: runtimeaicr.azurecr.io/aep/aep-auth-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8350
+              name: http
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8350"
+            # Co-routed under the console host so emails work without a
+            # separate auth.aep DNS record. When auth.aep.rt19 DNS is
+            # provisioned in the future, swap this back.
+            - name: PUBLIC_BASE_URL
+              value: "https://aep.rt19.runtimeai.io"
+            - name: CONSOLE_BASE_URL
+              value: "https://aep.rt19.runtimeai.io"
+            - name: ADMIN_BASE_URL
+              value: "https://aep-admin.rt19.runtimeai.io"
+            - name: GATEWAY_BASE_URL
+              value: "https://aep-api.rt19.runtimeai.io"
+            - name: COOKIE_DOMAIN
+              value: ".aep.rt19.runtimeai.io"
+            - name: JWT_ISSUER
+              value: "auth.aep.rt19.runtimeai.io"
+            - name: SIGNING_KEY_PATH
+              value: "/run/secrets/aep/auth/jwt-signer.pem"
+            - name: SIGNING_KEY_KID
+              value: "aep-auth-v1"
+            - name: SMTP_HOST
+              value: "smtp.sendgrid.net"
+            - name: SMTP_PORT
+              value: "587"
+            - name: SMTP_FROM
+              value: "RuntimeAI <noreply@runtimeai.io>"
+            - name: CORS_ORIGINS
+              value: "https://aep.rt19.runtimeai.io,https://aep-admin.rt19.runtimeai.io,https://runtimeai.io,https://www.runtimeai.io"
+            # ADMIN_SECRET still comes from envFrom (existing aep-secrets) for
+            # backward-compat; in a follow-up the auth-service reads it from
+            # /run/secrets/aep/auth/admin-secret instead.
+          volumeMounts:
+            - name: aep-secrets-tmpfs
+              mountPath: /run/secrets/aep
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8350 }
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8350 }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+        # Sidecar that refreshes the secret material every 5 min while the
+        # pod is alive. Keeps the on-disk PEM fresh after Vault rotation
+        # without requiring a pod restart.
+        - name: vault-agent-sidecar
+          image: runtimeaicr.azurecr.io/aep/aep-vault-agent:latest
+          imagePullPolicy: Always
+          env:
+            - name: MODE
+              value: "sidecar"
+            - name: OUTPUT_DIR
+              value: "/run/secrets/aep"
+            - name: BOOTSTRAP_DIR
+              value: "/etc/secrets-bootstrap"
+            - name: QV_ADDR
+              value: "http://quantumvault.pqdata.svc.cluster.local:8200"
+            - name: QV_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: aep-qv-token
+                  key: token
+                  optional: true
+            - name: REFRESH_INTERVAL
+              value: "5m"
+            - name: SECRETS_MANIFEST
+              value: |
+                [
+                  {"name":"auth/jwt-signer.pem","key":"aep/auth/jwt-signer","format":"pem"},
+                  {"name":"auth/admin-secret","key":"aep/admin/secret","format":"raw"},
+                  {"name":"auth/smtp-pass","key":"aep/auth/smtp-pass","format":"raw"}
+                ]
+          volumeMounts:
+            - name: aep-secrets-tmpfs
+              mountPath: /run/secrets/aep
+            - name: aep-secrets-bootstrap
+              mountPath: /etc/secrets-bootstrap
+              readOnly: true
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aep-auth-service
+  namespace: aep
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aep-auth-service
+  namespace: aep
+spec:
+  selector:
+    app: aep-auth-service
+  ports:
+    - name: http
+      port: 8350
+      targetPort: 8350
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aep-auth-service-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aep-auth-service
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aep-auth-service-ingress
+  namespace: aep
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: auth.aep.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-auth-service
+                port:
+                  number: 8350
+  tls:
+    - hosts:
+        - auth.aep.rt19.runtimeai.io
+      secretName: auth-aep-rt19-tls

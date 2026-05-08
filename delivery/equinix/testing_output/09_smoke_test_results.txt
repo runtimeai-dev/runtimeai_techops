@@ -1,0 +1,46 @@
+========================================
+RuntimeAI Smoke Test — Fri Mar 27 18:07:21 PDT 2026
+Target: https://api.rt19.runtimeai.io
+Tenant: equinix-test
+========================================
+
+--- Health Checks ---
+  [0;32m✅ PASS[0m  Control Plane /health
+  [0;32m✅ PASS[0m  app.rt19.runtimeai.io → HTTP 200
+  [0;32m✅ PASS[0m  esign.rt19.runtimeai.io → HTTP 200
+  [0;32m✅ PASS[0m  auditor.rt19.runtimeai.io → HTTP 200
+  [0;32m✅ PASS[0m  saas.rt19.runtimeai.io → HTTP 200
+
+--- Authentication ---
+  [0;32m✅ PASS[0m  Login
+
+--- Agent Management ---
+  [0;32m✅ PASS[0m  List Agents
+
+--- Governance ---
+  [0;32m✅ PASS[0m  Egress Check
+  [0;32m✅ PASS[0m  Access Reviews
+
+--- Kill Switch ---
+  [0;32m✅ PASS[0m  List Active Kill Switches
+
+--- Audit & Compliance ---
+  [0;32m✅ PASS[0m  Audit Chain Integrity
+  [0;32m✅ PASS[0m  Audit Evidence
+  [0;32m✅ PASS[0m  Export Evidence (JSON)
+  [0;32m✅ PASS[0m  Compliance Frameworks
+
+--- MCP Gateway ---
+  [0;32m✅ PASS[0m  MCP Health
+  [0;32m✅ PASS[0m  MCP Tools List
+
+--- Monitoring ---
+  [0;32m✅ PASS[0m  Monitoring Health
+
+--- Discovery ---
+  [0;31m❌ FAIL[0m  Discovery: 404 page not found
+
+========================================
+RESULTS: 17/18 passed, 1 failed
+========================================
+⚠️  Some tests failed — review above

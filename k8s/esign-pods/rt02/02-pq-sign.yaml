@@ -1,0 +1,145 @@
+# OPER_RT19-062: rt02 pod — PQ Sign with nginx TLS sidecar
+# pq-sign binary has no built-in TLS; nginx sidecar terminates TLS on :8443 → localhost:8087.
+# Per-pod: each pod has its own pq-sign instance and its own ML-DSA-87 signing key.
+# Cross-pod verification works because POST /api/v1/verify/document accepts the full sig.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pq-sign-tls-proxy-config
+  namespace: rt02
+data:
+  nginx.conf: |
+    worker_processes 1;
+    error_log /dev/stderr warn;
+
+    events { worker_connections 256; }
+
+    http {
+      server {
+        listen 8443 ssl;
+        server_name pq-sign.rt02.svc.cluster.local;
+
+        ssl_certificate     /tls/tls.crt;
+        ssl_certificate_key /tls/tls.key;
+        ssl_protocols       TLSv1.3;
+        ssl_ciphers         HIGH:!aNULL:!MD5;
+
+        location / {
+          proxy_pass http://127.0.0.1:8087;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+      }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pq-sign-tls
+  namespace: rt02
+spec:
+  secretName: pq-sign-tls-secret
+  dnsNames:
+    - pq-sign.rt02.svc.cluster.local
+    - pq-sign.rt02
+  issuerRef:
+    name: cluster-issuer
+    kind: ClusterIssuer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-sign
+  namespace: rt02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pq-sign
+  template:
+    metadata:
+      labels:
+        app: pq-sign
+    spec:
+      containers:
+        # ── PQ Sign service ────────────────────────────────────────────────
+        - name: pq-sign
+          image: runtimeaicr.azurecr.io/pq-sign:latest
+          env:
+            - name: PORT
+              value: "8087"
+            - name: QUANTUMVAULT_URL
+              value: https://quantumvault.pqdata.svc.cluster.local:8200
+            - name: QUANTUMVAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pqdp-esign-secrets
+                  key: quantumvault-token
+            - name: PQDP_TENANT_ID
+              value: esign-platform
+            - name: KEY_REF
+              value: esign-platform/rt02/tenant-signing-key
+          ports:
+            - containerPort: 8087
+              name: http-internal
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8087
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
+
+        # ── nginx TLS sidecar ──────────────────────────────────────────────
+        - name: tls-proxy
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 8443
+              name: https
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: pq-sign-tls-proxy-config
+        - name: tls
+          secret:
+            secretName: pq-sign-tls-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-sign
+  namespace: rt02
+spec:
+  selector:
+    app: pq-sign
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443

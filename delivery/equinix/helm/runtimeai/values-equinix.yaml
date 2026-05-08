@@ -1,0 +1,48 @@
+# values-equinix.yaml — Equinix On-Prem Override
+# Usage: helm install runtimeai ./helm/runtimeai -f helm/runtimeai/values-equinix.yaml -n rt19
+
+global:
+  registry: "your-registry.equinix.internal"
+  imageTag: "1.0.0-trial"
+  imagePullPolicy: IfNotPresent
+  namespace: rt19
+  domain: "runtimeai.equinix.internal"
+  subdomainPrefix: "rt19"
+  storageClass: "local-path"       # Or "longhorn", "rook-ceph-block"
+  cookieDomain: "equinix.internal"
+  imagePullSecret: "equinix-pull-secret"
+
+secrets:
+  dbSecret: "rt19-db-secret"
+  appSecret: "rt19-app-secrets"
+  emailSecret: "rt19-email-secrets"
+  storageSecret: "rt19-storage-secrets"
+
+# Equinix trial sizing (smaller footprint)
+controlPlane:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+dashboard:
+  replicas: 1
+
+authService:
+  replicas: 1
+  emailProvider: "smtp"    # On-prem uses SMTP, not SendGrid
+
+esignService:
+  storageBackend: "local"  # No Azure Blob on-prem
+  storagePath: "/data/esign"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  tls:
+    enabled: true
+    clusterIssuer: "selfsigned-issuer"  # On-prem typically uses self-signed

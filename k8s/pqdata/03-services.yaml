@@ -1,0 +1,669 @@
+# =============================================================================
+# Qutonomous Security Platform — Services
+# Deploys the 8 core HTTP services.
+# Assumes ARM64 images.
+# =============================================================================
+
+# --- Base Service Definitions ---
+# Helper template for reusing common elements. We inline these in the actual YAML
+# below to keep it pure Kubernetes manifest format.
+
+---
+# 1. QuantumVault (Port 8200)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantumvault
+  namespace: qutonomous
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quantumvault
+  template:
+    metadata:
+      labels:
+        app: quantumvault
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8200"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: "pqdata"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      nodeSelector:
+        agentpool: pqdata
+      containers:
+        - name: quantumvault
+          image: runtimeaicr.azurecr.io/qutonomous/quantumvault:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8200
+          envFrom:
+            - secretRef:
+                name: qutonomous-app-secrets
+            - secretRef:
+                name: qutonomous-db-secrets
+            # OPER_RT19-104 §J — license pubkey + LICENSE_SERVICE_URL.
+            # Provide a runtimeai-license-pubkey ConfigMap in this namespace
+            # (mirror of rt19's; same hex key value).
+            - configMapRef:
+                name: runtimeai-license-pubkey
+                optional: true
+          env:
+            - name: MIGRATE_PATH
+              value: "/app/migrations"
+            - name: QV_PORT
+              value: "8200"
+            - name: QV_KEM_ALGORITHM
+              value: "ML-KEM-1024"
+            - name: QV_DSA_ALGORITHM
+              value: "ML-DSA-87"
+            - name: QV_AUDIT_ENABLED
+              value: "true"
+            - name: ENFORCE_JWT
+              value: "true"
+            # OPER_RT19-104 §B5 — license enforcement DISABLED until rollout.
+            # Flip with: kubectl set env deploy/quantumvault -n qutonomous ENFORCE_LICENSE=true
+            - name: ENFORCE_LICENSE
+              value: "false"
+            - name: RUNTIMEAI_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: runtimeai-license
+                  key: license.jwt
+                  optional: true
+          volumeMounts:
+            - name: license-file
+              mountPath: /etc/runtimeai
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8200
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8200
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: license-file
+          secret:
+            secretName: runtimeai-license
+            optional: true
+            items:
+              - key: license.jwt
+                path: license.jwt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantumvault
+  namespace: qutonomous
+spec:
+  selector:
+    app: quantumvault
+  ports:
+    - port: 8200
+      targetPort: 8200
+
+---
+# 2. PQ Policy Engine (Port 8083)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-policy-engine
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pq-policy-engine
+  template:
+    metadata:
+      labels:
+        app: pq-policy-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-policy-engine
+          image: runtimeaicr.azurecr.io/qutonomous/pq-policy-engine:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8083 } ]
+          envFrom: [ { secretRef: { name: qutonomous-app-secrets } }, { secretRef: { name: qutonomous-db-secrets } } ]
+          env:
+            - { name: PE_PORT, value: "8083" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8083 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8083 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-policy-engine
+  namespace: qutonomous
+spec:
+  selector: { app: pq-policy-engine }
+  ports: [ { port: 8083, targetPort: 8083 } ]
+
+---
+# 3. PQ CryptoGuard (Port 8084)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-cryptoguard
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: pq-cryptoguard } }
+  template:
+    metadata:
+      labels: { app: pq-cryptoguard }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8084" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-cryptoguard
+          image: runtimeaicr.azurecr.io/qutonomous/pq-cryptoguard:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8084 } ]
+          envFrom: [ { secretRef: { name: qutonomous-app-secrets } }, { secretRef: { name: qutonomous-db-secrets } } ]
+          env:
+            - { name: CG_PORT, value: "8084" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8084 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8084 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-cryptoguard
+  namespace: qutonomous
+spec:
+  selector: { app: pq-cryptoguard }
+  ports: [ { port: 8084, targetPort: 8084 } ]
+
+---
+# 4. PQ Secure DataShare (Port 8085)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-secure-datashare
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: pq-secure-datashare } }
+  template:
+    metadata:
+      labels: { app: pq-secure-datashare }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8085" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-secure-datashare
+          image: runtimeaicr.azurecr.io/qutonomous/pq-secure-datashare:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8085 } ]
+          envFrom: [ { secretRef: { name: qutonomous-app-secrets } }, { secretRef: { name: qutonomous-db-secrets } } ]
+          env:
+            - { name: DS_PORT, value: "8085" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8085 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8085 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-secure-datashare
+  namespace: qutonomous
+spec:
+  selector: { app: pq-secure-datashare }
+  ports: [ { port: 8085, targetPort: 8085 } ]
+
+---
+# 5. PQ TokenVault (Port 8086)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-tokenvault
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: pq-tokenvault } }
+  template:
+    metadata:
+      labels: { app: pq-tokenvault }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8086" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-tokenvault
+          image: runtimeaicr.azurecr.io/qutonomous/pq-tokenvault:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8086 } ]
+          envFrom: [ { secretRef: { name: qutonomous-app-secrets } }, { secretRef: { name: qutonomous-db-secrets } } ]
+          env:
+            - { name: TV_PORT, value: "8086" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+            - { name: QV_INT_ENABLED, value: "true" }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8086 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8086 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-tokenvault
+  namespace: qutonomous
+spec:
+  selector: { app: pq-tokenvault }
+  ports: [ { port: 8086, targetPort: 8086 } ]
+
+---
+# 6. PQ Sign (Port 8087)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-sign
+  namespace: qutonomous
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: pq-sign } }
+  template:
+    metadata:
+      labels: { app: pq-sign }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8087" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-sign
+          image: runtimeaicr.azurecr.io/qutonomous/pq-sign:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8087 } ]
+          envFrom:
+            - secretRef: { name: qutonomous-app-secrets }
+            - secretRef: { name: qutonomous-db-secrets }
+            # OPER_RT19-104 §J — license pubkey + LICENSE_SERVICE_URL.
+            - configMapRef: { name: runtimeai-license-pubkey, optional: true }
+          env:
+            - { name: SG_PORT, value: "8087" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+            # OPER_RT19-104 §B6 — license enforcement DISABLED until rollout.
+            - { name: ENFORCE_LICENSE, value: "false" }
+            - name: RUNTIMEAI_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: runtimeai-license
+                  key: license.jwt
+                  optional: true
+          volumeMounts: [ { name: license-file, mountPath: /etc/runtimeai, readOnly: true } ]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8087 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8087 }, initialDelaySeconds: 5 }
+      volumes:
+        - name: license-file
+          secret:
+            secretName: runtimeai-license
+            optional: true
+            items: [ { key: license.jwt, path: license.jwt } ]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-sign
+  namespace: qutonomous
+spec:
+  selector: { app: pq-sign }
+  ports: [ { port: 8087, targetPort: 8087 } ]
+
+---
+# 7. PQ Comply (Port 8090)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-comply
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: pq-comply } }
+  template:
+    metadata:
+      labels: { app: pq-comply }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8090" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-comply
+          image: runtimeaicr.azurecr.io/qutonomous/pq-comply:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8090 } ]
+          envFrom: [ { secretRef: { name: qutonomous-app-secrets } }, { secretRef: { name: qutonomous-db-secrets } } ]
+          env:
+            - { name: CP_PORT, value: "8090" }
+            - { name: ENFORCE_JWT, value: "true" }
+            - { name: QUANTUMVAULT_URL, value: "http://quantumvault.qutonomous.svc.cluster.local:8200" }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8090 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8090 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-comply
+  namespace: qutonomous
+spec:
+  selector: { app: pq-comply }
+  ports: [ { port: 8090, targetPort: 8090 } ]
+
+---
+# 8. PQ Transit Shield (Port 8443)
+# Uses the internal self-signed cert from cert-manager
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-transit-shield
+  namespace: qutonomous
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: pq-transit-shield } }
+  template:
+    metadata:
+      labels: { app: pq-transit-shield }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8443" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-transit-shield
+          image: runtimeaicr.azurecr.io/qutonomous/pq-transit-shield:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8443 } ]
+          envFrom:
+            - secretRef: { name: qutonomous-app-secrets }
+            - secretRef: { name: qutonomous-db-secrets }
+          env:
+            - name: TS_LISTEN
+              value: ":8443"
+            - name: TS_UPSTREAM
+              value: "http://quantumvault.qutonomous.svc.cluster.local:8200"
+            - name: TS_MODE
+              value: "gateway"
+            - name: TS_KEY_EXCHANGE
+              value: "X25519MLKEM768"
+            - name: ALLOW_CLASSICAL_FALLBACK
+              value: "false"
+            - name: ENFORCE_JWT
+              value: "true"
+            - name: QUANTUMVAULT_URL
+              value: "http://quantumvault.qutonomous.svc.cluster.local:8200"
+            - name: TLS_CERT_FILE
+              value: "/certs/tls.crt"
+            - name: TLS_KEY_FILE
+              value: "/certs/tls.key"
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: qutonomous-transit-shield-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-transit-shield
+  namespace: qutonomous
+spec:
+  selector: { app: pq-transit-shield }
+  ports: [ { port: 8443, targetPort: 8443 } ]
+
+---
+# 9. PQ Migrate (Port 8095)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pq-migrate
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: pq-migrate } }
+  template:
+    metadata:
+      labels: { app: pq-migrate }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8095" }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: pq-migrate
+          image: runtimeaicr.azurecr.io/qutonomous/pq-migrate:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 8095 } ]
+          envFrom:
+            - secretRef: { name: qutonomous-app-secrets }
+            - secretRef: { name: qutonomous-db-secrets }
+          env:
+            - name: PQ_MIGRATE_SERVE
+              value: "true"
+            - name: PQ_MIGRATE_PORT
+              value: "8095"
+            - name: ENFORCE_JWT
+              value: "true"
+            - name: QUANTUMVAULT_URL
+              value: "http://quantumvault.qutonomous.svc.cluster.local:8200"
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 8095 }, initialDelaySeconds: 15 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8095 }, initialDelaySeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-migrate
+  namespace: qutonomous
+spec:
+  selector: { app: pq-migrate }
+  ports: [ { port: 8095, targetPort: 8095 } ]
+
+---
+# 10. Frontend — Qutonomous Dashboard (app.qutonomous.com → Port 80)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qutonomous-dashboard
+  namespace: qutonomous
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: qutonomous-dashboard } }
+  template:
+    metadata:
+      labels: { app: qutonomous-dashboard }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: qutonomous-dashboard
+          image: runtimeaicr.azurecr.io/qutonomous/qutonomous-dashboard:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 80 } ]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 5, periodSeconds: 30 }
+          readinessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 3, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qutonomous-dashboard
+  namespace: qutonomous
+spec:
+  selector: { app: qutonomous-dashboard }
+  ports: [ { port: 80, targetPort: 80 } ]
+
+---
+# 11. Frontend — Qutonomous Auditor Portal (auditor.qutonomous.com → Port 80)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qutonomous-auditor
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: qutonomous-auditor } }
+  template:
+    metadata:
+      labels: { app: qutonomous-auditor }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: qutonomous-auditor
+          image: runtimeaicr.azurecr.io/qutonomous/qutonomous-auditor:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 80 } ]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 5, periodSeconds: 30 }
+          readinessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 3, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qutonomous-auditor
+  namespace: qutonomous
+spec:
+  selector: { app: qutonomous-auditor }
+  ports: [ { port: 80, targetPort: 80 } ]
+
+---
+# 12. Frontend — Qutonomous Admin (admin.qutonomous.com → Port 80, IP-allowlisted at ingress)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qutonomous-admin
+  namespace: qutonomous
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: qutonomous-admin } }
+  template:
+    metadata:
+      labels: { app: qutonomous-admin }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: qutonomous-admin
+          image: runtimeaicr.azurecr.io/qutonomous/qutonomous-admin:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 80 } ]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          livenessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 5, periodSeconds: 30 }
+          readinessProbe: { httpGet: { path: /healthz, port: 80 }, initialDelaySeconds: 3, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qutonomous-admin
+  namespace: qutonomous
+spec:
+  selector: { app: qutonomous-admin }
+  ports: [ { port: 80, targetPort: 80 } ]
+
+---
+# 13. Frontend — Qutonomous Landing (www.qutonomous.com → Port 80)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qutonomous-landing
+  namespace: qutonomous
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: qutonomous-landing } }
+  template:
+    metadata:
+      labels: { app: qutonomous-landing }
+    spec:
+      tolerations: [ { key: "pqdata", operator: "Equal", value: "true", effect: "NoSchedule" } ]
+      nodeSelector: { agentpool: pqdata }
+      containers:
+        - name: qutonomous-landing
+          image: runtimeaicr.azurecr.io/qutonomous/qutonomous-landing:latest
+          imagePullPolicy: Always
+          ports: [ { containerPort: 80 } ]
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+          livenessProbe: { httpGet: { path: /, port: 80 }, initialDelaySeconds: 10, periodSeconds: 30 }
+          readinessProbe: { httpGet: { path: /, port: 80 }, initialDelaySeconds: 5, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qutonomous-landing
+  namespace: qutonomous
+spec:
+  selector: { app: qutonomous-landing }
+  ports: [ { port: 80, targetPort: 80 } ]

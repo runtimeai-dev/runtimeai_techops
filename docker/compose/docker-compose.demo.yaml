@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # --- Customer Workload (Bank A) ---
+  # mimics the backend service the customer wants to protect
+  internal-api:
+    image: hashicorp/http-echo
+    command: [ "-text", "{\"status\": \"ok\", \"balance\": \"$1,000,000\", \"tenant\": \"bank-a\"}" ]
+    ports:
+      - "5678" # Not exposed to host, only reachable via sidecar
+
+  # --- RuntimeAI Sidecar (Enforcer) ---
+  # Running in the customer environment, connecting back to SaaS
+  enforcer:
+    build:
+      context: ./flow-enforcer
+      dockerfile: Dockerfile.envoy
+    volumes:
+      - ./opa/config/opa.yaml:/config/opa.yaml:ro
+      - ./opa/policies:/policies:ro
+    ports:
+      - "10000:8092" # Expose Enforcer on 10000 to differentiate from SaaS (8092)
+    environment:
+      # Connect to SaaS Control Plane running on Host
+      - OPA_URL=http://host.docker.internal:8181/v1/data/authzion/allow
+      - POLICY_MANAGER=http://host.docker.internal:8093
+      - ENVOY_LOG_LEVEL=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "opa:host-gateway"
+    depends_on:
+      - internal-api
+      - cost-ledger
+
+  # --- RuntimeAI: Cost Ledger (Budget Caps) ---
+  cost-ledger:
+    image: golang:1.25-alpine
+    command: [ "go", "run", "./cmd/server/main.go" ] # Dev mode
+    working_dir: /app
+    volumes:
+      - ./services/cost-ledger:/app
+    environment:
+      - REDIS_ADDR=redis:6379
+      - PORT=8099
+    ports:
+      - "8102:8099"
+    depends_on:
+      - redis
+
+  lifecycle-manager:
+    build:
+      context: ./services/lifecycle-manager
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/authzion
+      - POLICY_MANAGER_URL=http://policy-manager:8093
+      - CHECK_INTERVAL=10
+    depends_on:
+      - postgres
+      - policy-manager
+
+  redis:
+    image: redis:7-alpine
+    ports: [ "6379:6379" ]
+
+  # --- Gaming Anti-Cheat Verifier ---
+  verifier:
+    build:
+      context: ./services/verifier
+      dockerfile: Dockerfile
+    ports:
+      - "8095:8095"
+    environment:
+      - PORT=8095

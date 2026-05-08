@@ -1,0 +1,272 @@
+{{/* Dashboard Deployment */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: dashboard
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "dashboard" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.dashboard.port }}
+          env:
+            - name: FINOPS_UPSTREAM
+              value: "ai-finops-service:{{ .Values.aiFinops.port }}"
+            - name: AAIC_UPSTREAM
+              value: "aaic-service:{{ .Values.aaicService.port }}"
+            - name: MARKETPLACE_UPSTREAM
+              value: "marketplace-service:{{ .Values.marketplace.port }}"
+            - name: BILLING_UPSTREAM
+              value: "control-plane:{{ .Values.controlPlane.port }}"
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: dashboard
+  ports:
+    - port: 80
+      targetPort: {{ .Values.dashboard.port }}
+  type: ClusterIP
+---
+{{/* Auth Service Deployment */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: auth-service
+spec:
+  replicas: {{ .Values.authService.replicas }}
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: auth-service
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "auth-service" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.authService.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+            - name: EMAIL_PROVIDER
+              value: {{ .Values.authService.emailProvider | quote }}
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.emailSecret }}
+                  key: SENDGRID_API_KEY
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.emailSecret }}
+                  key: SENDGRID_FROM_EMAIL
+            - name: PORT
+              value: {{ .Values.authService.port | quote }}
+            - name: AUTH_SERVICE_BASE_URL
+              value: "https://{{ include "runtimeai.apiDomain" . }}"
+            - name: DASHBOARD_URL
+              value: "https://{{ include "runtimeai.appDomain" . }}"
+            - name: AUDITOR_URL
+              value: "https://{{ include "runtimeai.auditorDomain" . }}"
+            - name: MARKETPLACE_URL
+              value: "https://{{ include "runtimeai.marketplaceDomain" . }}"
+            - name: ESIGN_URL
+              value: "https://{{ include "runtimeai.esignDomain" . }}"
+            - name: COOKIE_DOMAIN
+              value: {{ .Values.global.cookieDomain | quote }}
+            - name: COOKIE_SECURE
+              value: "true"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: REDIS_URL
+          resources:
+            {{- toYaml .Values.authService.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-svc
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: {{ .Values.authService.port }}
+      targetPort: {{ .Values.authService.port }}
+  type: ClusterIP
+---
+{{/* MCP Gateway */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: mcp-gateway
+spec:
+  replicas: {{ .Values.mcpGateway.replicas }}
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: mcp-gateway
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "mcp-gateway" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.mcpGateway.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: PORT
+              value: {{ .Values.mcpGateway.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.mcpGateway.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.mcpGateway.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.mcpGateway.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-gateway
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: mcp-gateway
+  ports:
+    - port: {{ .Values.mcpGateway.port }}
+      targetPort: {{ .Values.mcpGateway.port }}
+  type: ClusterIP
+---
+{{/* Discovery */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: discovery
+spec:
+  replicas: {{ .Values.discovery.replicas }}
+  selector:
+    matchLabels:
+      app: discovery
+  template:
+    metadata:
+      labels:
+        app: discovery
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: discovery
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "discovery" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.discovery.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: PORT
+              value: {{ .Values.discovery.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.discovery.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.discovery.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.discovery.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: discovery
+  ports:
+    - port: {{ .Values.discovery.port }}
+      targetPort: {{ .Values.discovery.port }}
+  type: ClusterIP

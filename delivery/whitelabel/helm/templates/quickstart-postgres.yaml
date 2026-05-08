@@ -1,0 +1,49 @@
+# R7-B — Quickstart Postgres StatefulSet. Rendered only when
+# .Values.quickstart.postgres.enabled is true (set by values-quickstart.yaml).
+# NOT FOR PRODUCTION: single replica, no backups, default password.
+{{- if .Values.quickstart.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-quickstart
+  labels: { app: postgres-quickstart, runtimeai/quickstart: "true" }
+spec:
+  clusterIP: None
+  ports: [{ name: postgres, port: 5432, targetPort: 5432 }]
+  selector: { app: postgres-quickstart }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-quickstart
+spec:
+  serviceName: postgres-quickstart
+  replicas: 1
+  selector: { matchLabels: { app: postgres-quickstart } }
+  template:
+    metadata:
+      labels: { app: postgres-quickstart, runtimeai/quickstart: "true" }
+    spec:
+      securityContext: { fsGroup: 999 }
+      containers:
+      - name: postgres
+        image: {{ .Values.quickstart.postgres.image | quote }}
+        env:
+        - { name: POSTGRES_USER,     value: runtimeai }
+        - { name: POSTGRES_PASSWORD, value: CHANGEME-quickstart }
+        - { name: POSTGRES_DB,       value: runtimeai }
+        - { name: PGDATA,            value: /var/lib/postgresql/data/pgdata }
+        ports: [{ containerPort: 5432, name: postgres }]
+        volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+        readinessProbe:
+          exec: { command: [pg_isready, -U, runtimeai, -d, runtimeai] }
+          periodSeconds: 5
+        livenessProbe:
+          exec: { command: [pg_isready, -U, runtimeai, -d, runtimeai] }
+          initialDelaySeconds: 30
+  volumeClaimTemplates:
+  - metadata: { name: data }
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources: { requests: { storage: {{ .Values.quickstart.postgres.storage | default "20Gi" | quote }} } }
+{{- end }}

@@ -1,0 +1,194 @@
+# OPER_RT19-062: Shared PostgreSQL via Patroni (primary + standby)
+# Self-managed HA PostgreSQL — replaces Azure managed service to reduce cost.
+# Patroni uses k8s ConfigMap DCS for leader election (no etcd needed).
+# Failover: primary failure → standby promoted in < 30s.
+# max_connections=100 allows 2× PgBouncer replicas × DEFAULT_POOL_SIZE=25 + headroom.
+---
+# ── ConfigMap: patroni.yaml for both primary and standby ────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patroni-config
+  namespace: shared-data
+data:
+  patroni.yaml: |
+    scope: esign-postgres
+    namespace: /shared-data/
+    name: PATRONI_NAME  # replaced by entrypoint per-pod
+
+    restapi:
+      listen: 0.0.0.0:8008
+      connect_address: PATRONI_NAME.postgres-headless.shared-data.svc.cluster.local:8008
+
+    kubernetes:
+      namespace: shared-data
+      labels:
+        cluster-name: esign-postgres
+
+    bootstrap:
+      dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: 1048576  # 1MB
+        postgresql:
+          use_pg_rewind: true
+          parameters:
+            max_connections: 100
+            shared_buffers: 256MB
+            wal_level: replica
+            hot_standby: on
+            max_wal_senders: 5
+
+      initdb:
+        - encoding: UTF8
+        - data-checksums
+
+    postgresql:
+      listen: 0.0.0.0:5432
+      connect_address: PATRONI_NAME.postgres-headless.shared-data.svc.cluster.local:5432
+      data_dir: /data/postgres
+      pgpass: /tmp/pgpass
+      authentication:
+        replication:
+          username: replicator
+          password: ${REPLICATOR_PASSWORD}
+        superuser:
+          username: postgres
+          password: ${POSTGRES_PASSWORD}
+        rewind:
+          username: rewind_user
+          password: ${POSTGRES_PASSWORD}
+      parameters:
+        max_connections: 100
+        shared_buffers: 256MB
+        log_destination: stderr
+        logging_collector: off
+---
+# ── Service: headless (for Patroni DNS resolution) ───────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: shared-data
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-patroni
+  ports:
+    - name: postgres
+      port: 5432
+    - name: patroni-api
+      port: 8008
+---
+# ── Service: primary (PgBouncer connects here) ───────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary
+  namespace: shared-data
+  labels:
+    app: postgres-patroni
+    role: primary
+spec:
+  selector:
+    app: postgres-patroni
+    role: master  # Patroni sets this label on the primary pod
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# ── StatefulSet: postgres-patroni ───────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-patroni
+  namespace: shared-data
+spec:
+  serviceName: postgres-headless
+  replicas: 2  # primary + standby
+  selector:
+    matchLabels:
+      app: postgres-patroni
+  template:
+    metadata:
+      labels:
+        app: postgres-patroni
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: set-pod-name
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              # Inject pod hostname as PATRONI_NAME into patroni.yaml
+              sed "s/PATRONI_NAME/${HOSTNAME}/g" /config/patroni.yaml > /patroni/patroni.yaml
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: patroni-data
+              mountPath: /patroni
+      containers:
+        - name: postgres
+          image: patroni/patroni:3.3.2
+          command: [patroni, /patroni/patroni.yaml]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: postgres-password
+            - name: REPLICATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: replicator-password
+          ports:
+            - containerPort: 5432
+              name: postgres
+            - containerPort: 8008
+              name: patroni-api
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, postgres]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8008
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /data/postgres
+            - name: patroni-data
+              mountPath: /patroni
+      volumes:
+        - name: config
+          configMap:
+            name: patroni-config
+        - name: patroni-data
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: managed-premium  # Azure Premium SSD
+        resources:
+          requests:
+            storage: 50Gi
+---
+# ── Secret: postgres credentials (create via create-secrets.sh) ─────────────
+# kubectl create secret generic postgres-secrets -n shared-data \
+#   --from-literal=postgres-password="$(openssl rand -base64 32)" \
+#   --from-literal=replicator-password="$(openssl rand -base64 32)"

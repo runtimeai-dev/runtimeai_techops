@@ -1,0 +1,90 @@
+# Secrets and sensitive files — NEVER commit
+*.env
+*.env.generated
+*.env.local
+.env*
+!*.env.template
+!*.env.example
+
+# Terraform state files (live infrastructure, may contain sensitive values)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Kubernetes secrets manifests (actual secrets)
+*secrets*.yaml
+*secret*.yaml
+!*secrets*.template
+!*secrets*.example
+
+# Credentials and keys
+*credentials*
+*credential*
+*.key
+*.pem
+*.pub
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Demo/example credentials (if contain real values)
+*demo_credentials*
+!*demo_credentials*.template
+!*demo_credentials*.example
+
+# JWT tokens and bearer tokens
+*.jwt
+*token*
+!*token*.template
+!*token*.example
+
+# API keys and secrets
+*api*key*
+*secret*
+*apikey*
+!*secret*.template
+!*secret*.example
+
+# Private keys from backup/recovery
+*recovery*zip*
+*.zip.gpg
+*.enc
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vim/
+
+# Logs
+*.log
+logs/
+test_results/
+qa_testing_local/test_results/
+
+# Docker artifacts
+.dockerignore
+Dockerfile.local
+
+# Terraform cache
+.terraform.lock.hcl
+terraform.lock.hcl
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# OS temp files
+.DS_Store
+Thumbs.db
+*.tmp

@@ -1,0 +1,570 @@
+# Ingress + TLS for rt19
+---
+# cert-manager ClusterIssuer (Let's Encrypt production)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@runtimeai.io
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+# Main landing page (runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: landing-ingress
+  namespace: runtimeai-landing
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Security headers (REQ-046, REQ-047, REQ-048)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.rt19.runtimeai.io";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    # Rate limiting (REQ-042, REQ-108)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - runtimeai.io
+      secretName: runtimeai-io-tls
+    - hosts:
+        - www.runtimeai.io
+      secretName: www-runtimeai-tls
+  rules:
+    - host: runtimeai.io
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: landing-backend
+                port:
+                  number: 8081
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: website-singlepage
+                port:
+                  number: 80
+    - host: www.runtimeai.io
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: landing-backend
+                port:
+                  number: 8081
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: website-singlepage
+                port:
+                  number: 80
+---
+# NOTE: admin.runtimeai.io is now served by saas-admin-ingress in rt19 namespace
+# (see saas-admin.yaml). The duplicate saas-admin-app in runtimeai-landing was
+# removed to prevent deployment sync issues.
+---
+# Enterprise Dashboard (app.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dashboard-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Security headers (REQ-046, REQ-047, REQ-048)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.rt19.runtimeai.io wss://api.rt19.runtimeai.io";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.rt19.runtimeai.io
+      secretName: app-rt19-tls
+  rules:
+    - host: app.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard
+                port:
+                  number: 80
+---
+# Control Plane API (api.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"  # REQ-107: support document uploads >10MB
+    # Security headers (REQ-046, REQ-047, REQ-048)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    # Rate limiting (REQ-042, REQ-108)
+    nginx.ingress.kubernetes.io/limit-rps: "200"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.rt19.runtimeai.io
+      secretName: api-rt19-tls
+  rules:
+    - host: api.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: control-plane
+                port:
+                  number: 8080
+---
+# eSign (esign.rt19.runtimeai.io)
+# - /api/*  → esign-service (backend API on 8096)
+# - /sign/* → esign-service (guest signing flow on 8096)
+# - /*      → esign-landing (public landing on 3001)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: esign-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"  # REQ-107: support document uploads >10MB
+    # Security headers — SAMEORIGIN for X-Frame-Options to support embedded signing (REQ-047)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://esign.rt19.runtimeai.io https://api.rt19.runtimeai.io; frame-ancestors 'self'";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    # Rate limiting (REQ-042, REQ-108)
+    nginx.ingress.kubernetes.io/limit-rps: "200"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - esign.rt19.runtimeai.io
+      secretName: esign-rt19-tls
+  rules:
+    - host: esign.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: esign-service
+                port:
+                  number: 8096
+          - path: /sign/
+            pathType: Prefix
+            backend:
+              service:
+                name: esign-landing
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: esign-landing
+                port:
+                  number: 3001
+---
+# Auditor Dashboard (auditor.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auditor-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - auditor.rt19.runtimeai.io
+      secretName: auditor-rt19-tls
+  rules:
+    - host: auditor.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auditor-dashboard
+                port:
+                  number: 80
+---
+# Agent Marketplace (marketplace.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: marketplace-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - marketplace.rt19.runtimeai.io
+      secretName: marketplace-rt19-tls
+  rules:
+    - host: marketplace.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: marketplace-service
+                port:
+                  number: 8097
+---
+# AI FinOps (finops.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: finops-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=(), microphone=(), geolocation=()";
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - finops.rt19.runtimeai.io
+      secretName: finops-rt19-tls
+  rules:
+    - host: finops.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-finops-service
+                port:
+                  number: 8092
+---
+# LLM Proxy (proxy.rt19.runtimeai.io → vendor-wrapper)
+# Agents/tools configured to use RuntimeAI as their AI API base URL.
+# All traffic passes through OPA policy enforcement, budget tracking, and guardrails.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: proxy-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Allow large request bodies (LLM prompts can be large)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Long timeouts for streaming LLM responses
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+    nginx.ingress.kubernetes.io/limit-rps: "60"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - proxy.rt19.runtimeai.io
+      secretName: proxy-rt19-tls
+  rules:
+    - host: proxy.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vw-proxy
+                port:
+                  number: 8103
+---
+# LLM Enforcer (enforcer.rt19.runtimeai.io → vendor-wrapper)
+# Transparent proxy endpoint for Customer IT DNS override scenarios.
+# Same backend as proxy.rt19 but with CONNECT support and PKI/network-policy routes.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: enforcer-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+    nginx.ingress.kubernetes.io/limit-rps: "60"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - enforcer.rt19.runtimeai.io
+      secretName: enforcer-rt19-tls
+  rules:
+    - host: enforcer.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vw-proxy
+                port:
+                  number: 8103
+---
+# Omni Command Center (omni.rt19.runtimeai.io)
+# omni-shell (React UI on port 80) + omni-gateway API (/api/* on port 8100)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: omni-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - omni.rt19.runtimeai.io
+      secretName: omni-rt19-tls
+  rules:
+    - host: omni.rt19.runtimeai.io
+      http:
+        paths:
+          # /api/auth/ must be listed before /api/ so the ingress routes auth
+          # requests to omni-shell (which proxies to control-plane) rather than
+          # directly to omni-gateway which has no auth endpoints.
+          - path: /api/auth/
+            pathType: Prefix
+            backend:
+              service:
+                name: omni-shell
+                port:
+                  number: 80
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: omni-gateway
+                port:
+                  number: 8100
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: omni-shell
+                port:
+                  number: 80
+---
+# NHI Security Console (nhi.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nhi-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - nhi.rt19.runtimeai.io
+      secretName: nhi-rt19-tls
+  rules:
+    - host: nhi.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nhi-security-console
+                port:
+                  number: 80
+---
+# Cloud Security Console (cloud.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloud-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - cloud.rt19.runtimeai.io
+      secretName: cloud-rt19-tls
+  rules:
+    - host: cloud.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cloud-security-console
+                port:
+                  number: 80
+---
+# Kinetic AI Console (kinetic.rt19.runtimeai.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kinetic-ingress
+  namespace: rt19
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - kinetic.rt19.runtimeai.io
+      secretName: kinetic-rt19-tls
+  rules:
+    - host: kinetic.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kinetic-console
+                port:
+                  number: 80
+---
+# Default catch-all (raw IP → website-singlepage)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: default-ingress
+  namespace: runtimeai-landing
+spec:
+  ingressClassName: nginx
+  defaultBackend:
+    service:
+      name: website-singlepage
+      port:
+        number: 80

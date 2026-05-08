@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arh
+  namespace: runtimecrm
+  labels:
+    app: arh
+  annotations:
+    # OPER_RT19-104 follow-up — production scrape annotations.
+    # rt19's Prometheus scrapes `prometheus.io/scrape: "true"` namespaces.
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8315"
+    prometheus.io/path: "/metrics"
+spec:
+  replicas: 3
+  # Aligned with HPA minReplicas=3 (was 2 before; HPA fought the deploy).
+  revisionHistoryLimit: 3
+  # Cap stale ReplicaSets — we had 11+ accumulating after every deploy.
+  selector:
+    matchLabels:
+      app: arh
+  template:
+    metadata:
+      labels:
+        app: arh
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8315"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - arh
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: arh
+          image: runtimeaicr.azurecr.io/runtimecrm/arh:latest
+          ports:
+            - containerPort: 8315
+          envFrom:
+            - secretRef:
+                name: arh-secrets
+            - configMapRef:
+                name: arh-config
+          # startupProbe: cold start runs DB migrations + warms LLM client.
+          # Without this, liveness can fail mid-migration on a slow start.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8315
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8315
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8315
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              # Bumped from 500m/512Mi: 4 agent workers + scheduler + LLM
+              # proxy hit OOM under modest load with the old limits.
+              cpu: "1000m"
+              memory: "1Gi"

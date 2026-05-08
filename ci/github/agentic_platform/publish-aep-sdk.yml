@@ -1,0 +1,86 @@
+name: Publish AEP SDK
+
+on:
+  # ── Manual trigger (cost containment, matches runtimeai pattern) ─────────
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'SDK version tag (e.g., aep-v1.0.0)'
+        required: true
+        type: string
+  # ── Auto-trigger on version tags ─────────────────────────────────────────
+  # push:
+  #   tags:
+  #     - 'aep-v*'
+
+jobs:
+  publish-npm:
+    name: Publish @runtimeai/aep to npm
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-pypi:
+    name: Publish runtimeai-aep to PyPI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  tag-go-sdk:
+    name: Tag github.com/runtimeai/aep-go for pkg.go.dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push sdk/go sub-tree tag
+        run: |
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          # pkg.go.dev picks up the module at sdk/go via the sub-directory tag
+          git tag "sdk/go/${VERSION}"
+          git push origin "sdk/go/${VERSION}"
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [publish-npm, publish-pypi, tag-go-sdk]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ## AEP SDK Release
+
+            | Package | Registry |
+            |---------|----------|
+            | `@runtimeai/aep` | [npm](https://www.npmjs.com/package/@runtimeai/aep) |
+            | `runtimeai-aep` | [PyPI](https://pypi.org/project/runtimeai-aep/) |
+            | `github.com/runtimeai/aep-go` | [pkg.go.dev](https://pkg.go.dev/github.com/runtimeai/aep-go) |

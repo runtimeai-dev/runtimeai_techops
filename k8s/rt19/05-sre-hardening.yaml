@@ -1,0 +1,385 @@
+# SRE Hardening for rt19 namespace
+# REQ-034→045, REQ-101→115: HPA, PDB, NetworkPolicy, ResourceQuota, PG Backup
+#
+# Apply after 03-services.yaml:
+#   kubectl apply -f 05-sre-hardening.yaml
+#
+# Prerequisites:
+#   - metrics-server deployed (for HPA)
+#   - rt19-app-secrets must include REDIS_URL with AUTH password
+#   - Azure Blob (or S3) credentials for PG backup
+---
+# ── HPA: Horizontal Pod Autoscalers ──────────────────────────────
+# REQ-035, REQ-102: Auto-scale critical services based on CPU utilization
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: control-plane-hpa
+  namespace: rt19
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: control-plane
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: esign-service-hpa
+  namespace: rt19
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: esign-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-service-hpa
+  namespace: rt19
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# ── PDB: PodDisruptionBudgets ────────────────────────────────────
+# REQ-036, REQ-103: Ensure at least 1 pod remains during node drain/upgrades
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: control-plane-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: control-plane
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: esign-service-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: esign-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dashboard-pdb
+  namespace: rt19
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dashboard
+---
+# ── NetworkPolicy: East-West Traffic Segmentation ────────────────
+# REQ-037, REQ-109: Only allow required inter-service traffic
+
+# Default: deny all ingress to rt19 namespace (explicit allow required)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: rt19
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow ingress controller → all services (external traffic)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: rt19
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+---
+# Allow control-plane ↔ all internal services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-control-plane-internal
+  namespace: rt19
+spec:
+  podSelector:
+    matchLabels:
+      app: control-plane
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dashboard
+        - podSelector:
+            matchLabels:
+              app: esign-service
+        - podSelector:
+            matchLabels:
+              app: mcp-gateway
+        - podSelector:
+            matchLabels:
+              app: ai-finops-service
+        - podSelector:
+            matchLabels:
+              app: billing-service
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# Allow auth-service access from control-plane and esign-service only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-service
+  namespace: rt19
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: control-plane
+        - podSelector:
+            matchLabels:
+              app: esign-service
+      ports:
+        - port: 8097
+          protocol: TCP
+---
+# Allow esign-service access from esign-landing and control-plane
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-esign-service
+  namespace: rt19
+spec:
+  podSelector:
+    matchLabels:
+      app: esign-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: esign-landing
+        - podSelector:
+            matchLabels:
+              app: control-plane
+      ports:
+        - port: 8096
+          protocol: TCP
+---
+# ── ResourceQuota: Namespace Resource Limits ─────────────────────
+# REQ-038: Prevent runaway pods from starving the cluster
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rt19-quota
+  namespace: rt19
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"
+    persistentvolumeclaims: "10"
+---
+# ── PostgreSQL Backup CronJob ────────────────────────────────────
+# REQ-039, REQ-105: Automated daily backups of PostgreSQL to Azure Blob/S3
+#
+# This CronJob runs pg_dump daily at 02:00 UTC and uploads the dump.
+# Azure Blob credentials must be in rt19-backup-secrets.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: rt19
+spec:
+  schedule: "0 2 * * *"  # Daily at 02:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/tmp/runtimeai_${TIMESTAMP}.sql.gz"
+                  echo "[backup] Starting pg_dump at $(date)"
+                  pg_dump "${DATABASE_URL}" | gzip > "${BACKUP_FILE}"
+                  echo "[backup] Dump complete: $(du -h ${BACKUP_FILE})"
+                  # Upload to Azure Blob (or S3 if configured)
+                  if [ -n "${AZURE_STORAGE_ACCOUNT}" ]; then
+                    az storage blob upload \
+                      --account-name "${AZURE_STORAGE_ACCOUNT}" \
+                      --container-name "pg-backups" \
+                      --name "rt19/${TIMESTAMP}.sql.gz" \
+                      --file "${BACKUP_FILE}" \
+                      --auth-mode key \
+                      --account-key "${AZURE_STORAGE_KEY}"
+                    echo "[backup] Uploaded to Azure Blob: rt19/${TIMESTAMP}.sql.gz"
+                  fi
+                  echo "[backup] Done at $(date)"
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: rt19-db-secret
+                      key: DATABASE_URL
+                - name: AZURE_STORAGE_ACCOUNT
+                  valueFrom:
+                    secretKeyRef:
+                      name: rt19-backup-secrets
+                      key: AZURE_STORAGE_ACCOUNT
+                      optional: true
+                - name: AZURE_STORAGE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: rt19-backup-secrets
+                      key: AZURE_STORAGE_KEY
+                      optional: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+---
+# ── Pod Anti-Affinity (applied via 03-services.yaml topologySpreadConstraints) ──
+# REQ-045, REQ-112: Ensure replicas spread across nodes
+#
+# NOTE: For full anti-affinity, add topologySpreadConstraints to each Deployment
+# in 03-services.yaml. This is documented as a follow-up to apply when node
+# count increases beyond 2.
+#
+# Example to add to critical Deployments:
+#   spec:
+#     template:
+#       spec:
+#         topologySpreadConstraints:
+#           - maxSkew: 1
+#             topologyKey: kubernetes.io/hostname
+#             whenUnsatisfiable: DoNotSchedule
+#             labelSelector:
+#               matchLabels:
+#                 app: <service-name>

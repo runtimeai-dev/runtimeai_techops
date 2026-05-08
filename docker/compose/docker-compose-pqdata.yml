@@ -1,0 +1,307 @@
+version: "3.9"
+
+# Qutonomous Security Platform — Full Stack Docker Compose
+# Usage: docker compose up --build -d
+# Requires: .env file (copy from .env.example and fill in JWT_SECRET)
+
+networks:
+  qutonomous:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qutonomous
+      POSTGRES_PASSWORD: qutonomous
+      POSTGRES_DB: qutonomous
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qutonomous -d qutonomous"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  # ── Qutonomous Services ─────────────────────────────────────────────────────
+
+  quantumvault:
+    build:
+      context: ./services/quantumvault
+      dockerfile: Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - QV_PORT=8200
+      - QV_KEM_ALGORITHM=ML-KEM-1024
+      - QV_DSA_ALGORITHM=ML-DSA-87
+      - QV_AUDIT_ENABLED=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8200/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-secure-datashare:
+    build:
+      context: ./services/pq-secure-datashare
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - DS_PORT=8085
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      quantumvault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-policy-engine:
+    build:
+      context: ./services/pq-policy-engine
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - PE_PORT=8083
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pq-secure-datashare:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-cryptoguard:
+    build:
+      context: ./services/pq-cryptoguard
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - CG_PORT=8084
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pq-policy-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-transit-shield:
+    build:
+      context: ./services/pq-transit-shield
+      dockerfile: Dockerfile
+    ports:
+      - "8443:8443"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - TS_LISTEN=:8443
+      - TS_UPSTREAM=http://quantumvault:8200
+      - TS_MODE=gateway
+      - TS_KEY_EXCHANGE=X25519MLKEM768
+      - ALLOW_CLASSICAL_FALLBACK=false
+      - TLS_CERT_FILE=/certs/tls.crt
+      - TLS_KEY_FILE=/certs/tls.key
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./certs/transit-shield:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      quantumvault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:8443/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-tokenvault:
+    build:
+      context: ./services/pq-tokenvault
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8086"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - TV_PORT=8086
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - QV_INT_ENABLED=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pq-cryptoguard:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-sign:
+    build:
+      context: ./services/pq-sign
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8087"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - SG_PORT=8087
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pq-tokenvault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8087/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-comply:
+    build:
+      context: ./services/pq-comply
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - CP_PORT=8090
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pq-sign:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  pq-migrate:
+    build:
+      context: ./services/pq-migrate
+      dockerfile: Dockerfile
+    ports:
+      - "8095:8095"
+    environment:
+      - PQ_MIGRATE_SERVE=true
+      - PQ_MIGRATE_PORT=8095
+      - DATABASE_URL=postgres://qutonomous:qutonomous@postgres:5432/qutonomous?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
+      - ENFORCE_JWT=true
+      - QUANTUMVAULT_URL=http://quantumvault:8200
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      quantumvault:
+        condition: service_healthy
+      pq-comply:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8095/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - qutonomous
+    restart: unless-stopped
+
+  # CLI tools (pq-developer-platform) are not long-running services.
+  # Build with: docker build -t pqdata ./services/pq-developer-platform

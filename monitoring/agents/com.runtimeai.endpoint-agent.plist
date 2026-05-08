@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  RuntimeAI Endpoint Agent — launchd plist template
+  OPER_RT19-090 (RuntimeAI on RuntimeAI — macOS Data Plane)
+
+  Installation (see runbooks/macos-dp-install.md for full instructions):
+
+    1. Fill in TENANT_ID, API_KEY, and DISCOVERY_URL below.
+    2. Copy to ~/Library/LaunchAgents/ (user-level, recommended) or
+       /Library/LaunchDaemons/ (system-level, requires sudo).
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.runtimeai.endpoint-agent.plist
+
+  Log files written to ~/Library/Logs/runtimeai-endpoint-agent.{log,err}.
+
+  The agent runs once at load time and then on a 12-hour interval via
+  StartInterval. Adjust StartInterval (seconds) to change scan frequency.
+  To trigger an immediate scan:
+    launchctl kickstart -k gui/$(id -u)/com.runtimeai.endpoint-agent
+-->
+<plist version="1.0">
+<dict>
+
+  <!-- Job label — must match the filename -->
+  <key>Label</key>
+  <string>com.runtimeai.endpoint-agent</string>
+
+  <!-- Run the agent under the current user's Python3 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/usr/local/lib/runtimeai/python_endpoint_agent.py</string>
+    <string>--tenant-id</string>
+    <string>REPLACE_WITH_TENANT_ID</string>
+    <string>--discovery-url</string>
+    <string>REPLACE_WITH_DISCOVERY_URL</string>
+    <string>--api-key</string>
+    <string>REPLACE_WITH_API_KEY</string>
+  </array>
+
+  <!-- Run once immediately on load, then every 12 hours -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>43200</integer>
+
+  <!-- Keep alive: no — this is a one-shot scanner, not a daemon -->
+  <key>KeepAlive</key>
+  <false/>
+
+  <!-- Throttle restarts if the agent crashes repeatedly -->
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+
+  <!-- Stdout / stderr logs -->
+  <key>StandardOutPath</key>
+  <string>/Users/REPLACE_WITH_USERNAME/Library/Logs/runtimeai-endpoint-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/REPLACE_WITH_USERNAME/Library/Logs/runtimeai-endpoint-agent.err</string>
+
+  <!-- Working directory -->
+  <key>WorkingDirectory</key>
+  <string>/usr/local/lib/runtimeai</string>
+
+  <!-- Environment — passes HOME so Python3 finds user site-packages -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/REPLACE_WITH_USERNAME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+</dict>
+</plist>

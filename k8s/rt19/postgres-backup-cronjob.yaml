@@ -1,0 +1,96 @@
+# Postgres backup CronJob — RCRM-032 §A3.
+#
+# rt19's Postgres is in-cluster (postgres:16-alpine + 10Gi PVC). No PITR.
+# This CronJob is the bare-minimum data-loss mitigation: daily pg_dumpall
+# to a separate PVC, 7-day retention. NOT a substitute for migrating to
+# Azure Flexible Server with proper PITR — that's the next ops project.
+#
+# Restore procedure: see runtimeai-enterprise/runbooks/runtimecrm.md §
+# "Database backup / PITR".
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: rt19
+  labels:
+    app: postgres-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: managed-csi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: rt19
+  labels:
+    app: postgres-backup
+spec:
+  # Daily at 03:15 UTC = 20:15 PT — quiet window for both US + EU customers
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600 # 1h hard cap; alerts via failure history
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dumpall
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  STAMP="$(date -u +%Y%m%d_%H%M%S)"
+                  OUT="/backups/postgres-rt19-${STAMP}.sql.gz"
+                  echo "[backup] dumping → ${OUT}"
+                  PGPASSWORD="${PGPASSWORD}" pg_dumpall \
+                    -h "${PGHOST}" -U "${PGUSER}" \
+                    --no-password --clean --if-exists \
+                    | gzip -9 > "${OUT}"
+                  echo "[backup] size: $(du -h ${OUT} | awk '{print $1}')"
+                  # Retention: keep 7 days of dumps. Anything older is purged
+                  # by find -mtime +7. Adjust via BACKUP_RETENTION_DAYS env.
+                  RETAIN="${BACKUP_RETENTION_DAYS:-7}"
+                  echo "[backup] purging files older than ${RETAIN} days"
+                  find /backups -name 'postgres-rt19-*.sql.gz' -type f -mtime "+${RETAIN}" -delete
+                  ls -lh /backups | tail -20
+              env:
+                - name: PGHOST
+                  value: postgres.rt19.svc.cluster.local
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-superuser
+                      key: PGUSER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-superuser
+                      key: PGPASSWORD
+                - name: BACKUP_RETENTION_DAYS
+                  value: "7"
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups

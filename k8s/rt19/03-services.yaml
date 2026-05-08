@@ -1,0 +1,1070 @@
+# rt19 Service Deployment Template
+# Each service follows this pattern — customize image, ports, and env as needed.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: rt19
+  labels:
+    app: control-plane
+spec:
+  replicas: 2  # REQ-034, REQ-101: minimum 2 replicas for HA
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      containers:
+        - name: control-plane
+          image: runtimeaicr.azurecr.io/control-plane:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: RUNTIMEAI_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: ADMIN_SECRET
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL  # REQ-043, REQ-104: Redis with AUTH, not plain text
+            - name: OTEL_SDK_DISABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "none"
+            - name: FINOPS_SERVICE_URL
+              value: "http://ai-finops-service:8092"
+            - name: AAIC_SERVICE_URL
+              value: "http://aaic-service:5056"
+            - name: DISCOVERY_URL
+              value: "http://discovery:8090"
+            - name: PORT
+              value: "8080"
+            # ONB-007: runtime environment tag (controls About page display + CORS middleware)
+            - name: RUNTIME_ENVIRONMENT
+              value: "production"
+            # ONB-007: deployment timestamp — injected dynamically by build-push-deploy.sh
+            # Placeholder here; deploy script patches it with actual timestamp via kubectl set env
+            - name: DEPLOYED_AT
+              value: "1970-01-01T00:00:00Z"
+            # CORS origins (production — all rt19 frontends)
+            - name: CORS_ALLOWED_ORIGINS
+              value: "https://app.rt19.runtimeai.io,https://saas.rt19.runtimeai.io,https://www.runtimeai.io,https://admin.runtimeai.io,https://esign.rt19.runtimeai.io,https://auditor.rt19.runtimeai.io,https://marketplace.rt19.runtimeai.io,https://finops.rt19.runtimeai.io"
+            # WebAuthn FIDO2 (production domain)
+            - name: WEBAUTHN_RPID
+              value: "runtimeai.io"
+            - name: WEBAUTHN_RP_ORIGINS
+              value: "https://app.rt19.runtimeai.io,https://admin.runtimeai.io"
+            # Auth-service proxy (magic link, SSO, MFA, SCIM)
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:8097"
+            # Cookie domain for cross-subdomain session sharing (impersonate)
+            - name: COOKIE_DOMAIN
+              value: "runtimeai.io"
+            # BE-035: Extensible Multi-Vendor LLM Proxy
+            - name: VENDOR_PROXY_BASE_URL
+              value: "https://enforcer.rt19.runtimeai.io"
+            - name: BUNDLE_CACHE_URL
+              value: "http://bundle-cache:8094"
+            - name: INTERNAL_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: INTERNAL_SERVICE_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: rt19
+spec:
+  selector:
+    app: control-plane
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: rt19
+  labels:
+    app: dashboard
+spec:
+  replicas: 2  # REQ-034, REQ-101: minimum 2 replicas for HA
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: runtimeaicr.azurecr.io/dashboard:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FINOPS_UPSTREAM
+              value: "ai-finops-service:8092"
+            - name: AAIC_UPSTREAM
+              value: "aaic-service:5056"
+            - name: MARKETPLACE_UPSTREAM
+              value: "marketplace-service:8097"
+            - name: BILLING_UPSTREAM
+              value: "control-plane:8080"
+            - name: COST_LEDGER_UPSTREAM
+              value: "cost-ledger:8102"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: rt19
+spec:
+  selector:
+    app: dashboard
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+# Auth Service (K8s svc named auth-svc to avoid env var collision)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: rt19
+  labels:
+    app: auth-service
+spec:
+  replicas: 2  # REQ-034, REQ-101: minimum 2 replicas for HA (auth is critical path)
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: runtimeaicr.azurecr.io/auth-service:20260430-0015
+          ports:
+            - containerPort: 8097
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: EMAIL_PROVIDER
+              value: "sendgrid"
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: SENDGRID_API_KEY
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: SENDGRID_FROM_EMAIL
+            - name: EMAIL_FROM_NAME
+              value: "RuntimeAI"
+            - name: PORT
+              value: "8097"
+            # Portal redirect URLs (production — no localhost defaults)
+            - name: AUTH_SERVICE_BASE_URL
+              value: "https://api.rt19.runtimeai.io"
+            - name: DASHBOARD_URL
+              value: "https://app.rt19.runtimeai.io"
+            - name: AUDITOR_URL
+              value: "https://auditor.rt19.runtimeai.io"
+            - name: MARKETPLACE_URL
+              value: "https://marketplace.rt19.runtimeai.io"
+            - name: LANDING_URL
+              value: "https://www.runtimeai.io"
+            - name: ESIGN_URL
+              value: "https://esign.rt19.runtimeai.io"
+            # Cookie config (production)
+            - name: COOKIE_DOMAIN
+              value: "runtimeai.io"
+            - name: COOKIE_SECURE
+              value: "true"
+            # Redis (cluster-internal)
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL  # REQ-043, REQ-104: Redis with AUTH
+            # Logo for email templates (served from runtimeai.io static site)
+            - name: LOGO_URL
+              value: "https://runtimeai.io/logo-v2-light-cropped.png"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # Named auth-svc (not auth-service) to avoid K8s injecting AUTH_SERVICE_PORT env
+  name: auth-svc
+  namespace: rt19
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: 8097
+      targetPort: 8097
+  type: ClusterIP
+---
+# MCP Gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: rt19
+  labels:
+    app: mcp-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        app: mcp-gateway
+    spec:
+      containers:
+        - name: mcp-gateway
+          image: runtimeaicr.azurecr.io/mcp-gateway:latest
+          ports:
+            - containerPort: 8091
+          envFrom:
+            # OPER_RT19-104 §J — pubkey + LICENSE_SERVICE_URL.
+            # See license-pubkey-configmap.yaml.
+            - configMapRef:
+                name: runtimeai-license-pubkey
+                optional: true
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: PORT
+              value: "8091"
+            # OPER_RT19-104 §B1 — license enforcement is DISABLED until the
+            # runtimeai-license Secret is populated for this tenant. Flip
+            # this to "true" with: kubectl set env deploy/mcp-gateway -n rt19 ENFORCE_LICENSE=true
+            - name: ENFORCE_LICENSE
+              value: "false"
+            - name: RUNTIMEAI_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: runtimeai-license
+                  key: license.jwt
+                  optional: true
+          volumeMounts:
+            # Air-gap fallback: if the runtimeai-license Secret carries the
+            # license at /etc/runtimeai/license.jwt, clientlib reads from there
+            # when RUNTIMEAI_LICENSE_KEY env is empty.
+            - name: license-file
+              mountPath: /etc/runtimeai
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8091
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8091
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: license-file
+          secret:
+            secretName: runtimeai-license
+            optional: true
+            items:
+              - key: license.jwt
+                path: license.jwt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-gateway
+  namespace: rt19
+spec:
+  selector:
+    app: mcp-gateway
+  ports:
+    - port: 8091
+      targetPort: 8091
+  type: ClusterIP
+---
+# Discovery
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery
+  namespace: rt19
+  labels:
+    app: discovery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery
+  template:
+    metadata:
+      labels:
+        app: discovery
+    spec:
+      containers:
+        - name: discovery
+          image: runtimeaicr.azurecr.io/discovery:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: PORT
+              value: "8090"
+            - name: CONTROL_PLANE_URL
+              value: "http://control-plane:8080"
+            - name: VAULT_ADDR
+              value: "http://vault-broker:8097"
+            - name: RUNTIMEAI_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: API_KEY_SECRET
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            - name: RUN_MODE
+              value: "production"
+            - name: POLICY_MANAGER_URL
+              value: "http://policy-manager:8093"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery
+  namespace: rt19
+spec:
+  selector:
+    app: discovery
+  ports:
+    - port: 8090
+      targetPort: 8090
+  type: ClusterIP
+---
+# eSign Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-service
+  namespace: rt19
+  labels:
+    app: esign-service
+spec:
+  replicas: 1  # ReadWriteOnce PVC prevents >1 replica; use Recreate strategy
+  strategy:
+    type: Recreate  # Required: esign-storage PVC is ReadWriteOnce, cannot Multi-Attach
+  selector:
+    matchLabels:
+      app: esign-service
+  template:
+    metadata:
+      labels:
+        app: esign-service
+    spec:
+      containers:
+        - name: esign-service
+          image: runtimeaicr.azurecr.io/esign-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8096
+          envFrom:
+            # OPER_RT19-104 §J — pubkey + LICENSE_SERVICE_URL.
+            - configMapRef:
+                name: runtimeai-license-pubkey
+                optional: true
+          env:
+            # OPER_RT19-104 §B2 — license enforcement is DISABLED until the
+            # runtimeai-license Secret is populated for this tenant. Flip with
+            # kubectl set env deploy/esign-service -n rt19 ENFORCE_LICENSE=true
+            - name: ENFORCE_LICENSE
+              value: "false"
+            - name: RUNTIMEAI_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: runtimeai-license
+                  key: license.jwt
+                  optional: true
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: EMAIL_PROVIDER
+              value: "sendgrid"
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: SENDGRID_API_KEY
+            - name: SENDGRID_FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: SENDGRID_FROM_EMAIL
+            - name: ESIGN_BASE_URL
+              value: "https://esign.rt19.runtimeai.io"
+            - name: STORAGE_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: STORAGE_SIGNING_SECRET
+            - name: PORT
+              value: "8096"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:8097"
+            # CORS origins (production)
+            - name: CORS_ALLOWED_ORIGINS
+              value: "https://esign.rt19.runtimeai.io,https://www.runtimeai.io"
+            # Azure Blob Storage (REQ-019, ESIGN-100: production storage)
+            - name: STORAGE_BACKEND
+              value: "azure"
+            - name: AZURE_STORAGE_ACCOUNT
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-storage-secrets
+                  key: AZURE_STORAGE_ACCOUNT
+            - name: AZURE_STORAGE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-storage-secrets
+                  key: AZURE_STORAGE_KEY
+            - name: AZURE_STORAGE_CONTAINER
+              value: "esign-documents"
+            - name: STORAGE_PATH
+              value: "/tmp/esign"  # temp dir for processing, not primary storage
+            # REQ-061: Redis cache (gracefully degrades if unavailable)
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL
+            # REQ-085: Billing service for Stripe checkout proxy
+            - name: BILLING_SERVICE_URL
+              value: "http://billing-service:5090"
+            # Log level
+            - name: LOG_LEVEL
+              value: "info"
+            # ── PQDP / QUANTUM mode (OPER_RT19-060) ───────────────────────
+            # rt19 stays LEGACY (classical). Set ESIGN_CRYPTO_MODE=QUANTUM on rt01+.
+            # These vars are no-ops in LEGACY mode but scaffold is ready for migration.
+            - name: ESIGN_CRYPTO_MODE
+              value: "LEGACY"
+            - name: POD_ID
+              value: "rt19"
+            - name: ACTIVE_PODS
+              value: "rt19"
+            - name: PQDP_TENANT_ID
+              value: "esign-platform"
+            - name: QUANTUMVAULT_URL
+              value: "https://quantumvault.pqdata.svc.cluster.local:8200"
+            - name: PQ_SIGN_URL
+              value: "https://pq-sign.pqdata.svc.cluster.local:8443"
+            - name: PQ_POLICY_URL
+              value: "http://pq-policy-engine.pqdata.svc.cluster.local:8083"
+            - name: QUANTUMVAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-pqdp-secrets
+                  key: QUANTUMVAULT_TOKEN
+                  optional: true   # not required in LEGACY mode
+            - name: PQDP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-pqdp-secrets
+                  key: PQDP_JWT_SECRET
+                  optional: true   # not required in LEGACY mode
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8096
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8096
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 30m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: license-file
+              mountPath: /etc/runtimeai
+              readOnly: true
+      volumes:
+        - name: license-file
+          secret:
+            secretName: runtimeai-license
+            optional: true
+            items:
+              - key: license.jwt
+                path: license.jwt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-service
+  namespace: rt19
+spec:
+  selector:
+    app: esign-service
+  ports:
+    - port: 8096
+      targetPort: 8096
+  type: ClusterIP
+---
+# eSign Landing Page (public — esign.rt19.runtimeai.io)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-landing
+  namespace: rt19
+  labels:
+    app: esign-landing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: esign-landing
+  template:
+    metadata:
+      labels:
+        app: esign-landing
+    spec:
+      containers:
+        - name: esign-landing
+          image: runtimeaicr.azurecr.io/esign-landing:latest
+          ports:
+            - containerPort: 3001
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-landing
+  namespace: rt19
+spec:
+  selector:
+    app: esign-landing
+  ports:
+    - port: 3001
+      targetPort: 3001
+  type: ClusterIP
+---
+# AAIC Service (internal — proxied by Auditor Dashboard)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aaic-service
+  namespace: rt19
+  labels:
+    app: aaic-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aaic-service
+  template:
+    metadata:
+      labels:
+        app: aaic-service
+    spec:
+      containers:
+        - name: aaic-service
+          image: runtimeaicr.azurecr.io/aaic-service:latest
+          ports:
+            - containerPort: 5056
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: AAIC_PORT
+              value: "5056"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:8097"
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-email-secrets
+                  key: SENDGRID_API_KEY
+            - name: AAIC_FROM_EMAIL
+              value: "noreply@runtimeai.io"
+            - name: AAIC_BASE_URL
+              value: "https://auditor.rt19.runtimeai.io"
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: CONTROL_PLANE_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /api/aaic/info
+              port: 5056
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/aaic/info
+              port: 5056
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aaic-service
+  namespace: rt19
+spec:
+  selector:
+    app: aaic-service
+  ports:
+    - port: 5056
+      targetPort: 5056
+  type: ClusterIP
+---
+# Auditor Dashboard (public — auditor.rt19.runtimeai.io)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auditor-dashboard
+  namespace: rt19
+  labels:
+    app: auditor-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auditor-dashboard
+  template:
+    metadata:
+      labels:
+        app: auditor-dashboard
+    spec:
+      containers:
+        - name: auditor-dashboard
+          image: runtimeaicr.azurecr.io/auditor-dashboard:latest
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auditor-dashboard
+  namespace: rt19
+spec:
+  selector:
+    app: auditor-dashboard
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+# Marketplace Service (public — marketplace.rt19.runtimeai.io)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketplace-service
+  namespace: rt19
+  labels:
+    app: marketplace-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: marketplace-service
+  template:
+    metadata:
+      labels:
+        app: marketplace-service
+    spec:
+      containers:
+        - name: marketplace-service
+          image: runtimeaicr.azurecr.io/marketplace-service:latest
+          ports:
+            - containerPort: 8097
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: MARKETPLACE_PORT
+              value: "8097"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8097
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8097
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketplace-service
+  namespace: rt19
+spec:
+  selector:
+    app: marketplace-service
+  ports:
+    - port: 8097
+      targetPort: 8097
+  type: ClusterIP
+---
+# AI FinOps Service (public — finops.rt19.runtimeai.io)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-finops-service
+  namespace: rt19
+  labels:
+    app: ai-finops-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-finops-service
+  template:
+    metadata:
+      labels:
+        app: ai-finops-service
+    spec:
+      containers:
+        - name: ai-finops-service
+          image: runtimeaicr.azurecr.io/ai-finops-service:latest
+          ports:
+            - containerPort: 8092
+          envFrom:
+            # OPER_RT19-104 §J — pubkey + LICENSE_SERVICE_URL.
+            - configMapRef:
+                name: runtimeai-license-pubkey
+                optional: true
+          env:
+            # OPER_RT19-104 §B3 — license enforcement DISABLED until rollout.
+            # Flip with: kubectl set env deploy/ai-finops-service -n rt19 ENFORCE_LICENSE=true
+            - name: ENFORCE_LICENSE
+              value: "false"
+            - name: RUNTIMEAI_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: runtimeai-license
+                  key: license.jwt
+                  optional: true
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: license-file
+              mountPath: /etc/runtimeai
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8092
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8092
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: license-file
+          secret:
+            secretName: runtimeai-license
+            optional: true
+            items:
+              - key: license.jwt
+                path: license.jwt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-finops-service
+  namespace: rt19
+spec:
+  selector:
+    app: ai-finops-service
+  ports:
+    - port: 8092
+      targetPort: 8092
+  type: ClusterIP
+---
+# Billing Service (internal — billing API)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: rt19
+  labels:
+    app: billing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-service
+  template:
+    metadata:
+      labels:
+        app: billing-service
+    spec:
+      containers:
+        - name: billing-service
+          image: runtimeaicr.azurecr.io/billing-service:latest
+          ports:
+            - containerPort: 5090
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-db-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: JWT_SECRET
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rt19-app-secrets
+                  key: REDIS_URL  # REQ-043: Redis with AUTH
+            - name: SERVICE_PORT
+              value: "5090"
+            - name: STRIPE_MODE
+              value: "test"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: rt19
+spec:
+  selector:
+    app: billing-service
+  ports:
+    - port: 5090
+      targetPort: 5090
+  type: ClusterIP

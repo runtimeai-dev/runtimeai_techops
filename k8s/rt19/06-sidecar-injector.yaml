@@ -1,0 +1,224 @@
+# RuntimeAI Sidecar Injector — K8s MutatingAdmissionWebhook
+# OPER_RT19-031 TASK-11
+#
+# Deploys the webhook server and MutatingWebhookConfiguration.
+# Uses cert-manager for automatic TLS certificate provisioning.
+#
+# Prerequisites:
+#   - cert-manager installed in cluster
+#   - runtimeaicr.azurecr.io/sidecar-injector:latest image built and pushed
+
+---
+# 1a. Self-Signed Issuer for generating the CA cert
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: sidecar-injector-selfsign
+  namespace: rt19
+spec:
+  selfSigned: {}
+
+---
+# 1b. CA Certificate (self-signed root)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sidecar-injector-ca
+  namespace: rt19
+spec:
+  isCA: true
+  commonName: runtimeai-sidecar-injector-ca
+  secretName: sidecar-injector-ca-tls
+  issuerRef:
+    name: sidecar-injector-selfsign
+    kind: Issuer
+  duration: 87600h   # 10 years
+  renewBefore: 8760h  # 1 year before expiry
+
+---
+# 1c. CA Issuer (signs webhook certs using the CA above)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: sidecar-injector-ca-issuer
+  namespace: rt19
+spec:
+  ca:
+    secretName: sidecar-injector-ca-tls
+
+---
+# 1d. Webhook TLS Certificate (issued by the CA)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sidecar-injector-cert
+  namespace: rt19
+spec:
+  secretName: sidecar-injector-tls
+  dnsNames:
+    - sidecar-injector
+    - sidecar-injector.rt19
+    - sidecar-injector.rt19.svc
+    - sidecar-injector.rt19.svc.cluster.local
+  issuerRef:
+    name: sidecar-injector-ca-issuer
+    kind: Issuer
+  duration: 8760h   # 1 year
+  renewBefore: 720h  # 30 days before expiry
+
+---
+# 2. Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sidecar-injector
+  namespace: rt19
+  labels:
+    app: sidecar-injector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sidecar-injector
+  template:
+    metadata:
+      labels:
+        app: sidecar-injector
+    spec:
+      serviceAccountName: sidecar-injector
+      containers:
+        - name: sidecar-injector
+          image: runtimeaicr.azurecr.io/sidecar-injector:latest
+          ports:
+            - containerPort: 8443
+              name: webhook
+              protocol: TCP
+          env:
+            - name: INJECTOR_PORT
+              value: "8443"
+            - name: TLS_CERT_FILE
+              value: "/etc/webhook/certs/tls.crt"
+            - name: TLS_KEY_FILE
+              value: "/etc/webhook/certs/tls.key"
+            - name: FLOW_ENFORCER_IMAGE
+              value: "runtimeaicr.azurecr.io/flow-enforcer:latest"
+            - name: DATA_PROXY_IMAGE
+              value: "runtimeaicr.azurecr.io/data-proxy:latest"
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: sidecar-injector-tls
+
+---
+# 3. Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: sidecar-injector
+  namespace: rt19
+spec:
+  selector:
+    app: sidecar-injector
+  ports:
+    - port: 443
+      targetPort: 8443
+      protocol: TCP
+  type: ClusterIP
+
+---
+# 4. ServiceAccount + RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sidecar-injector
+  namespace: rt19
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-sidecar-injector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-sidecar-injector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-sidecar-injector
+subjects:
+  - kind: ServiceAccount
+    name: sidecar-injector
+    namespace: rt19
+
+---
+# 5. MutatingWebhookConfiguration
+# Intercepts Pod CREATE requests in namespaces labeled with runtimeai.io/inject-sidecar=true
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: runtimeai-sidecar-injector
+  annotations:
+    cert-manager.io/inject-ca-from: rt19/sidecar-injector-cert
+webhooks:
+  - name: sidecar-injector.runtimeai.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 10
+    reinvocationPolicy: Never
+    failurePolicy: Ignore   # Fail-open: don't block pods if injector is down
+    clientConfig:
+      service:
+        name: sidecar-injector
+        namespace: rt19
+        path: /mutate
+        port: 443
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: Namespaced
+    namespaceSelector:
+      matchLabels:
+        runtimeai.io/inject-sidecar: "true"
+    objectSelector:
+      matchExpressions:
+        # Don't inject into system pods
+        - key: app
+          operator: NotIn
+          values: ["sidecar-injector", "control-plane"]

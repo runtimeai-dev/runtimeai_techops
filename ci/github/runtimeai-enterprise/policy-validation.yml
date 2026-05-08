@@ -1,0 +1,45 @@
+name: Policy Validation
+
+on:
+  # ── Manual trigger only (cost containment) ──────────────────────────
+  workflow_dispatch: {}
+  # ── Original auto-triggers (disabled to save CI costs) ──────────────
+  # pull_request:
+  #   paths: ['policies/**', 'sdk/policy/**']
+  # push:
+  #   branches: [main]
+  #   paths: ['policies/**', 'sdk/policy/**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd sdk/policy
+          npm ci
+          npm run build
+
+      # In a real scenario, we would iterate over all policies
+      # For MVP, we test the comprehensive_policy example
+      - name: Lint Policy
+        run: node sdk/policy/dist/cli.js lint sdk/policy/dist/comprehensive_policy.js
+
+      - name: Test Policy
+        run: node sdk/policy/dist/cli.js test sdk/policy/dist/comprehensive_policy.js
+
+      - name: Impact Analysis (Dry Run)
+        if: github.event_name == 'pull_request'
+        # In real scenario, fetch logs from S3 or API. Here we use sample logs.
+        run: |
+          echo "Running impact analysis..."
+          # Mock log retrieval
+          cp sdk/policy/sample_logs.json /tmp/logs.json
+          node sdk/policy/dist/cli.js replay sdk/policy/dist/comprehensive_policy.js --logs /tmp/logs.json

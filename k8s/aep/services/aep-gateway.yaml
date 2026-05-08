@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aep-gateway
+  namespace: aep
+  labels:
+    app: aep-gateway
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: aep-gateway
+  template:
+    metadata:
+      labels:
+        app: aep-gateway
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: aep-gateway
+      containers:
+        - name: aep-gateway
+          image: runtimeaicr.azurecr.io/aep/aep-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8300
+              name: http
+          env:
+            - name: PORT
+              value: "8300"
+            - name: PUBLIC_BASE_URL
+              value: "https://aep-api.rt19.runtimeai.io"
+            # CORS allowlist for the AEP console + admin app + future
+            # marketing pages. Browser preflights from any other origin are
+            # rejected.
+            - name: CORS_ORIGINS
+              value: "https://aep.rt19.runtimeai.io,https://aep-admin.rt19.runtimeai.io,https://aep-api.rt19.runtimeai.io,https://runtimeai.io,https://www.runtimeai.io"
+            - name: MAX_REQUEST_BODY_BYTES
+              value: "10485760"
+            # HS256 alignment with auth-service + product services. JWKS path
+            # retained for future ES256 rollout but unused while JWT_SECRET is set.
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aep-secrets
+                  key: JWT_SECRET
+            - name: AUTH_JWKS_URL
+              value: "http://aep-auth-service.aep.svc.cluster.local:8350/.well-known/jwks.json"
+            - name: JWT_ISSUER
+              value: "auth.aep.rt19.runtimeai.io"
+            # Auth ON: every product call requires Authorization: Bearer <jwt>
+            # signed by aep-auth-service. /healthz, /readyz, /healthz/all,
+            # /openapi.json, and per-product /healthz remain public.
+            - name: ENABLE_AUTH
+              value: "true"
+            # license-gate stays bypassed until license-service has the AEP
+            # module flag wired (per OPER_RT19-086).
+            - name: LICENSE_SERVICE_URL
+              value: ""
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8300
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8300
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aep-gateway
+  namespace: aep
+spec:
+  selector:
+    app: aep-gateway
+  ports:
+    - name: http
+      port: 8300
+      targetPort: 8300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aep-gateway-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aep-gateway
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aep-gateway-ingress
+  namespace: aep
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aep-api.rt19.runtimeai.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aep-gateway
+                port:
+                  number: 8300
+  tls:
+    - hosts:
+        - aep-api.rt19.runtimeai.io
+      secretName: aep-api-rt19-tls

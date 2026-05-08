@@ -1,0 +1,235 @@
+# RuntimeAI Helm Chart — values.yaml
+# Override these values per environment (e.g., values-equinix.yaml)
+
+# ── Global Config ────────────────────────────────────────────────────
+global:
+  registry: "runtimeaicr.azurecr.io"
+  imageTag: "latest"
+  imagePullPolicy: IfNotPresent
+  namespace: rt19
+  domain: "runtimeai.io"
+  # Sub-domain pattern: <prefix>.rt19.<domain>
+  subdomainPrefix: "rt19"
+
+  # Storage class for PVCs
+  storageClass: "managed-csi"
+
+  # Cookie/WebAuthn domain
+  cookieDomain: "runtimeai.io"
+
+  # Image pull secret (create beforehand via kubectl create secret docker-registry)
+  imagePullSecret: ""
+
+# ── Secrets ──────────────────────────────────────────────────────────
+# Reference existing K8s secrets by name (create them before helm install)
+secrets:
+  dbSecret: "rt19-db-secret"
+  appSecret: "rt19-app-secrets"
+  emailSecret: "rt19-email-secrets"
+  storageSecret: "rt19-storage-secrets"
+
+# ── Database ─────────────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  persistence:
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# ── Redis ────────────────────────────────────────────────────────────
+redis:
+  enabled: true
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Control Plane ────────────────────────────────────────────────────
+controlPlane:
+  replicas: 2
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    otelDisabled: "true"
+
+# ── Dashboard ────────────────────────────────────────────────────────
+dashboard:
+  replicas: 2
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Auth Service ─────────────────────────────────────────────────────
+authService:
+  replicas: 2
+  port: 8097
+  emailProvider: "sendgrid"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── MCP Gateway ──────────────────────────────────────────────────────
+mcpGateway:
+  replicas: 1
+  port: 8091
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Discovery ────────────────────────────────────────────────────────
+discovery:
+  replicas: 1
+  port: 8090
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── eSign Service ────────────────────────────────────────────────────
+esignService:
+  replicas: 1
+  port: 8096
+  storageBackend: "local"     # "local", "azure", or "s3"
+  storagePath: "/data/esign"
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── eSign Landing ────────────────────────────────────────────────────
+esignLanding:
+  replicas: 1
+  port: 3001
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── AAIC Service ─────────────────────────────────────────────────────
+aaicService:
+  replicas: 1
+  port: 5056
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Auditor Dashboard ───────────────────────────────────────────────
+auditorDashboard:
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Marketplace ──────────────────────────────────────────────────────
+marketplace:
+  replicas: 1
+  port: 8097
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── AI FinOps ────────────────────────────────────────────────────────
+aiFinops:
+  replicas: 1
+  port: 8092
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Billing Service ──────────────────────────────────────────────────
+billing:
+  replicas: 1
+  port: 5090
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── SaaS Admin ───────────────────────────────────────────────────────
+saasAdmin:
+  replicas: 1
+  port: 7080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Ingress ──────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"
+  tls:
+    enabled: true
+    clusterIssuer: "letsencrypt-prod"
+  annotations: {}
+
+# ── Monitoring ───────────────────────────────────────────────────────
+monitoring:
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+    adminPassword: ""  # Set via --set or secrets

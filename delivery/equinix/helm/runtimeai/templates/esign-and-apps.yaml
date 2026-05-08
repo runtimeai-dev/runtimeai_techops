@@ -1,0 +1,415 @@
+{{/* eSign PVC — only created when storageBackend is "local" */}}
+{{- if eq .Values.esignService.storageBackend "local" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: esign-documents-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: esign-service
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.esignService.persistence.size | default "10Gi" }}
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+---
+{{- end }}
+{{/* eSign Service */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: esign-service
+spec:
+  replicas: {{ .Values.esignService.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: esign-service
+  template:
+    metadata:
+      labels:
+        app: esign-service
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: esign-service
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "esign-service" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.esignService.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+            - name: STORAGE_BACKEND
+              value: {{ .Values.esignService.storageBackend | quote }}
+            - name: STORAGE_PATH
+              value: {{ .Values.esignService.storagePath | quote }}
+            - name: STORAGE_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.emailSecret }}
+                  key: STORAGE_SIGNING_SECRET
+            - name: ESIGN_BASE_URL
+              value: "https://{{ include "runtimeai.esignDomain" . }}"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:{{ .Values.authService.port }}"
+            - name: PORT
+              value: {{ .Values.esignService.port | quote }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: "https://{{ include "runtimeai.esignDomain" . }},https://{{ include "runtimeai.appDomain" . }}"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: REDIS_URL
+            - name: BILLING_SERVICE_URL
+              value: "http://billing-service:{{ .Values.billing.port }}"
+            - name: LOG_LEVEL
+              value: "info"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.esignService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.esignService.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.esignService.resources | nindent 12 }}
+          {{- if eq .Values.esignService.storageBackend "local" }}
+          volumeMounts:
+            - name: esign-data
+              mountPath: {{ .Values.esignService.storagePath | default "/data/esign" }}
+          {{- end }}
+      {{- if eq .Values.esignService.storageBackend "local" }}
+      volumes:
+        - name: esign-data
+          persistentVolumeClaim:
+            claimName: esign-documents-pvc
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-service
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: esign-service
+  ports:
+    - port: {{ .Values.esignService.port }}
+      targetPort: {{ .Values.esignService.port }}
+  type: ClusterIP
+---
+{{/* eSign Landing */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: esign-landing
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: esign-landing
+spec:
+  replicas: {{ .Values.esignLanding.replicas }}
+  selector:
+    matchLabels:
+      app: esign-landing
+  template:
+    metadata:
+      labels:
+        app: esign-landing
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: esign-landing
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "esign-landing" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.esignLanding.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.esignLanding.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.esignLanding.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: esign-landing
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: esign-landing
+  ports:
+    - port: {{ .Values.esignLanding.port }}
+      targetPort: {{ .Values.esignLanding.port }}
+  type: ClusterIP
+---
+{{/* AAIC Service */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aaic-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: aaic-service
+spec:
+  replicas: {{ .Values.aaicService.replicas }}
+  selector:
+    matchLabels:
+      app: aaic-service
+  template:
+    metadata:
+      labels:
+        app: aaic-service
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: aaic-service
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "aaic-service" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.aaicService.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: AAIC_PORT
+              value: {{ .Values.aaicService.port | quote }}
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-svc:{{ .Values.authService.port }}"
+            - name: AAIC_BASE_URL
+              value: "https://{{ include "runtimeai.auditorDomain" . }}"
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecret }}
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /api/aaic/info
+              port: {{ .Values.aaicService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.aaicService.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aaic-service
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: aaic-service
+  ports:
+    - port: {{ .Values.aaicService.port }}
+      targetPort: {{ .Values.aaicService.port }}
+  type: ClusterIP
+---
+{{/* Auditor Dashboard */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auditor-dashboard
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: auditor-dashboard
+spec:
+  replicas: {{ .Values.auditorDashboard.replicas }}
+  selector:
+    matchLabels:
+      app: auditor-dashboard
+  template:
+    metadata:
+      labels:
+        app: auditor-dashboard
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: auditor-dashboard
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "auditor-dashboard" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.auditorDashboard.port }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.auditorDashboard.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.auditorDashboard.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auditor-dashboard
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: auditor-dashboard
+  ports:
+    - port: 80
+      targetPort: {{ .Values.auditorDashboard.port }}
+  type: ClusterIP
+---
+{{/* Marketplace Service */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketplace-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: marketplace-service
+spec:
+  replicas: {{ .Values.marketplace.replicas }}
+  selector:
+    matchLabels:
+      app: marketplace-service
+  template:
+    metadata:
+      labels:
+        app: marketplace-service
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: marketplace-service
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "marketplace-service" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.marketplace.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: MARKETPLACE_PORT
+              value: {{ .Values.marketplace.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.marketplace.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.marketplace.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketplace-service
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: marketplace-service
+  ports:
+    - port: {{ .Values.marketplace.port }}
+      targetPort: {{ .Values.marketplace.port }}
+  type: ClusterIP
+---
+{{/* AI FinOps Service */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-finops-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "runtimeai.labels" . | nindent 4 }}
+    app: ai-finops-service
+spec:
+  replicas: {{ .Values.aiFinops.replicas }}
+  selector:
+    matchLabels:
+      app: ai-finops-service
+  template:
+    metadata:
+      labels:
+        app: ai-finops-service
+    spec:
+      {{- if .Values.global.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: ai-finops-service
+          image: {{ include "runtimeai.image" (dict "registry" .Values.global.registry "name" "ai-finops-service" "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.aiFinops.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecret }}
+                  key: DATABASE_URL
+            - name: FINOPS_PORT
+              value: {{ .Values.aiFinops.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.aiFinops.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.aiFinops.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-finops-service
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: ai-finops-service
+  ports:
+    - port: {{ .Values.aiFinops.port }}
+      targetPort: {{ .Values.aiFinops.port }}
+  type: ClusterIP

@@ -1,0 +1,26 @@
+# OPER_RT19-087p — Quickstart values: in-cluster Postgres + Redis as
+# StatefulSets. Useful for partner POC; NEVER for production. No HA, no
+# backups, no managed cert-manager TLS. The DATABASE_URL/REDIS_URL secrets
+# from install.sh are still authoritative — quickstart just provides the
+# matching pods.
+
+partner: { cloud: quickstart }
+
+quickstart:
+  postgres:
+    enabled: true
+    storage: 20Gi
+    image: postgres:15-alpine
+  redis:
+    enabled: true
+    image: redis:7-alpine
+
+# When quickstart is enabled, the Helm chart still expects DATABASE_URL +
+# REDIS_URL secrets to point at the in-cluster services:
+#   DATABASE_URL=postgresql://runtimeai:CHANGEME@postgres-quickstart:5432/runtimeai?sslmode=disable
+#   REDIS_URL=redis://redis-quickstart:6379/0
+
+externalServices:
+  postgres: { enabled: false }
+  redis:    { enabled: false }
+  blob:     { enabled: false }

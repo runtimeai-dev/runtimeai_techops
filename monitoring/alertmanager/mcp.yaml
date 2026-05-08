@@ -1,0 +1,43 @@
+# OPER_RT19-084f / 084l — Alertmanager rules for the MCP gateway.
+groups:
+- name: mcp-gateway
+  rules:
+  - alert: MCPServerStale
+    expr: mcp_servers_stale > 0
+    for: 3m
+    labels: { severity: page, service: mcp-gateway }
+    annotations:
+      summary: "{{ $value }} MCP server(s) stale (no heartbeat for >3 min)"
+      runbook: "https://runtimeai-enterprise/runbooks/mcp-gateway.md#alert-server-stale"
+
+  - alert: MCPGatewayP99HighLatency
+    expr: histogram_quantile(0.99, sum by (le) (rate(mcp_call_latency_seconds_bucket[5m]))) > 0.2
+    for: 5m
+    labels: { severity: page, service: mcp-gateway }
+    annotations:
+      summary: "MCP gateway p99 > 200ms over 5min"
+      runbook: "https://runtimeai-enterprise/runbooks/mcp-gateway.md#alert-gateway-p99"
+
+  - alert: MCPGateway5xxRate
+    expr: sum(rate(mcp_call_total{outcome="server_error"}[5m])) / sum(rate(mcp_call_total[5m])) > 0.01
+    for: 5m
+    labels: { severity: page, service: mcp-gateway }
+    annotations:
+      summary: "MCP gateway 5xx > 1% over 5min"
+      runbook: "https://runtimeai-enterprise/runbooks/mcp-gateway.md#alert-5xx-rate"
+
+  - alert: MCPAuditChainBreak
+    expr: mcp_audit_chain_breaks_total > 0
+    for: 1m
+    labels: { severity: page-security, service: mcp-gateway }
+    annotations:
+      summary: "MCP audit-log hash chain has a detected break (P0 security event)"
+      runbook: "https://runtimeai-enterprise/runbooks/mcp-gateway.md#alert-audit-chain-break"
+
+  - alert: MCPMFAFailures
+    expr: sum(rate(mcp_call_total{outcome="denied"}[5m])) > 10
+    for: 5m
+    labels: { severity: warn, service: mcp-gateway }
+    annotations:
+      summary: "MCP auth/MFA failures > 10/min (possible credential-stuffing)"
+      runbook: "https://runtimeai-enterprise/runbooks/mcp-gateway.md#alert-mfa-failures"

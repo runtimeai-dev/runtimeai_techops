@@ -1,0 +1,131 @@
+# NHI Security (Track 2) — rt19 manifests (NHI-000..015)
+#
+# Pre-req in rt19:
+#   - Postgres available via the shared postgres service.
+#   - Secret `nhi-security` must exist: DATABASE_URL, AUTH_JWT_ISSUER.
+#   - auth-svc, billing-service, ml-intelligence-service, redis already deployed.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nhi-security-service
+  namespace: rt19
+  labels:
+    app: nhi-security-service
+    runtimeai.io/track: "2"
+spec:
+  selector:
+    app: nhi-security-service
+  ports:
+    - name: http
+      port: 8099
+      targetPort: 8099
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nhi-security-service
+  namespace: rt19
+  labels:
+    app: nhi-security-service
+    runtimeai.io/track: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nhi-security-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: nhi-security-service
+    spec:
+      containers:
+        - name: app
+          image: runtimeaicr.azurecr.io/nhi-security-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8099
+          env:
+            - { name: PORT,                  value: "8099" }
+            - { name: ENFORCE_JWT,           value: "true" }
+            - { name: ENFORCE_MIGRATIONS,    value: "true" }
+            - { name: RUNTIME_ENVIRONMENT,   value: "production" }
+            - { name: NATS_ENABLED,          value: "false" }
+            - { name: AUTH_JWKS_URL,         value: "http://auth-svc:8097/.well-known/jwks.json" }
+            - { name: ML_SERVICE_URL,        value: "http://ml-intelligence-service:8095" }
+            - { name: AUDIT_LOG_URL,         value: "http://audit-black-box.aep.svc.cluster.local:8303" }
+            - { name: BILLING_SERVICE_URL,   value: "http://billing-service:5090" }
+            - { name: CONTROL_PLANE_URL,     value: "http://control-plane:8080" }
+            - { name: REDIS_URL,             value: "redis://redis:6379" }
+            - { name: SPIFFE_TRUST_DOMAIN,   value: "runtimeai.io" }
+            - { name: BASELINE_CRON,         value: "0 1 * * *" }
+            - { name: PARTITION_CRON,        value: "0 0 1 * *" }
+            - { name: BILLING_EMIT_CRON,     value: "0 * * * *" }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: nhi-security, key: DATABASE_URL } }
+            - name: AUTH_JWT_ISSUER
+              valueFrom: { secretKeyRef: { name: nhi-security, key: AUTH_JWT_ISSUER } }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8099 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8099 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 1000m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nhi-security-console
+  namespace: rt19
+  labels:
+    app: nhi-security-console
+    runtimeai.io/track: "2"
+spec:
+  selector:
+    app: nhi-security-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nhi-security-console
+  namespace: rt19
+  labels:
+    app: nhi-security-console
+    runtimeai.io/track: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nhi-security-console
+  template:
+    metadata:
+      labels:
+        app: nhi-security-console
+    spec:
+      containers:
+        - name: nginx
+          image: runtimeaicr.azurecr.io/nhi-security-console:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }

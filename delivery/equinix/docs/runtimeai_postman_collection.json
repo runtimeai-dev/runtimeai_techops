@@ -1,0 +1,4404 @@
+{
+  "info": {
+    "name": "RuntimeAI Platform API",
+    "_postman_id": "runtimeai-full-collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Complete RuntimeAI API collection \u2014 213 endpoints across 30+ modules"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.rt19.runtimeai.io"
+    },
+    {
+      "key": "tenant_id",
+      "value": "equinix-demo"
+    },
+    {
+      "key": "admin_secret",
+      "value": ""
+    },
+    {
+      "key": "agent_id",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [],
+  "item": [
+    {
+      "name": "A2A",
+      "item": [
+        {
+          "name": "A2A > Discover",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/a2a/discover?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "a2a",
+                "discover"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A2A > Invoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/a2a/invoke",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "a2a",
+                "invoke"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A2A > Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/a2a/messages?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "a2a",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "A2A > Policies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/a2a/policies?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "a2a",
+                "policies"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access Assignments",
+      "item": [
+        {
+          "name": "Access Assignments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/access-assignments?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "access-assignments"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access Packages",
+      "item": [
+        {
+          "name": "Access Packages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/access-packages?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "access-packages"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access Reviews",
+      "item": [
+        {
+          "name": "Access Reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/access-reviews?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "access-reviews"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Access Reviews > Items > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/access-reviews/items/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "access-reviews",
+                "items"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Access Reviews > My Reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/access-reviews/my-reviews?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "access-reviews",
+                "my-reviews"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        {
+          "name": "Activity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/activity?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "activity"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Admin > Analytics > Platform",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/analytics/platform?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "platform"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/audit-logs?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit-logs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Demo Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/demo-requests?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "demo-requests"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Identity Fabric Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/identity-fabric-metrics?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "identity-fabric-metrics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Impersonate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/impersonate?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "impersonate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Inventory",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/inventory?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "inventory"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Monitoring > Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/monitoring/alerts?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "monitoring",
+                "alerts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Monitoring > Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/monitoring/health",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "monitoring",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Monitoring > Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/monitoring/metrics?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "monitoring",
+                "metrics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Monitoring > Resources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/monitoring/resources?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "monitoring",
+                "resources"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Partners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/partners?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "partners"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/settings?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/tenants?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "tenants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin > Users > Reset Password",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/users/reset-password?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "reset-password"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/agents?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "agents"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/audit?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Audit > Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/audit/export?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "audit",
+                "export"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Audit > Verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/audit/verify?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "audit",
+                "verify"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Auth > Callback",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/callback",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "callback"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth > Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth > Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth > Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth > Oidc > Providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/oidc/providers",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "oidc",
+                "providers"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Blueprints",
+      "item": [
+        {
+          "name": "Blueprints",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/blueprints?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "blueprints"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Budgets",
+      "item": [
+        {
+          "name": "Budgets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/budgets?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "budgets"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalogs",
+      "item": [
+        {
+          "name": "Catalogs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/catalogs?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "catalogs"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Compliance",
+      "item": [
+        {
+          "name": "Compliance > Controls",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/controls?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "controls"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compliance > Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/export?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "export"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compliance > Frameworks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/frameworks?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "frameworks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compliance > Gaps",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/gaps?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "gaps"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compliance > Posture",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/posture?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "posture"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cost",
+      "item": [
+        {
+          "name": "Cost > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/cost/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "cost"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard > Credentials",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/credentials?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "credentials"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard > Drift",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/drift?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "drift"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard > Inventory",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/inventory?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "inventory"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard > Policy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/policy?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "policy"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard > Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/summary?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "summary"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Data Plane",
+      "item": [
+        {
+          "name": "Data Plane > Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/data-plane/health",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "data-plane",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Discovery",
+      "item": [
+        {
+          "name": "Discovery > Ai Assistants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/ai-assistants?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "ai-assistants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Automation Scans",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/automation-scans",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "automation-scans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Cloud Scanners",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/cloud-scanners",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "cloud-scanners"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Endpoints",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/endpoints?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "endpoints"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Findings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/findings?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "findings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Ide Scanners",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/ide-scanners",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "ide-scanners"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Import",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/import",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "import"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Import > History",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/import/history",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "import",
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/inbox?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "inbox"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Mcp > Invocations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/mcp/invocations?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "mcp",
+                "invocations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Mcp > Policies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/mcp/policies?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "mcp",
+                "policies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Mcp > Server Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/mcp/server-detail?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "mcp",
+                "server-detail"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Mcp > Servers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/mcp/servers?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "mcp",
+                "servers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Mcp > Tools",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/mcp/tools?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "mcp",
+                "tools"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Register From Blueprint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/register-from-blueprint",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "register-from-blueprint"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Registrations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/registrations?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "registrations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Scan Runs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/scan-runs",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "scan-runs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Scanner Configs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/scanner-configs?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "scanner-configs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Scanner Types",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/scanner-types",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "scanner-types"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Scanners",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/scanners",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "scanners"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Discovery > Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/discovery/settings?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "discovery",
+                "settings"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dns",
+      "item": [
+        {
+          "name": "Dns > Resolve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/dns/resolve",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dns",
+                "resolve"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drift",
+      "item": [
+        {
+          "name": "Drift > Findings > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/drift/findings/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "drift",
+                "findings"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Governance",
+      "item": [
+        {
+          "name": "Governance > Ca Enforce",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/ca-enforce",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "ca-enforce"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/export?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "export"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Policy Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/policy-versions",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "policy-versions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Sod Rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/sod-rules?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "sod-rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Sod Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/sod-summary?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "sod-summary"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Sod Violations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/sod-violations?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "sod-violations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Governance > Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/governance/webhooks?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "governance",
+                "webhooks"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Identity",
+      "item": [
+        {
+          "name": "Identity > Activity Feed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/identity/activity-feed?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "identity",
+                "activity-feed"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Identity > Agent Timeline > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/identity/agent-timeline/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "identity",
+                "agent-timeline"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Identity > Spiffe > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/identity/spiffe/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "identity",
+                "spiffe"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Infrastructure",
+      "item": [
+        {
+          "name": "Infrastructure > Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/infrastructure/metrics?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "infrastructure",
+                "metrics"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Internal",
+      "item": [
+        {
+          "name": "Internal > Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/internal/events?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "events"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Inventory > Discovered",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/discovered?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "inventory",
+                "discovered"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Issue",
+      "item": [
+        {
+          "name": "Issue",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/issue?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Keys",
+      "item": [
+        {
+          "name": "Keys > Rotate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/keys/rotate",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "keys",
+                "rotate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lifecycle",
+      "item": [
+        {
+          "name": "Lifecycle > Decommission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/lifecycle/decommission",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "lifecycle",
+                "decommission"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lifecycle > Decommissioned Agents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/lifecycle/decommissioned-agents",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "lifecycle",
+                "decommissioned-agents"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lifecycle > Workflow Runs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/lifecycle/workflow-runs?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "lifecycle",
+                "workflow-runs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lifecycle > Workflows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/lifecycle/workflows?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "lifecycle",
+                "workflows"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mcp",
+      "item": [
+        {
+          "name": "Mcp > Analytics > Anomalies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/analytics/anomalies?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "analytics",
+                "anomalies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Audit > Search",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/audit/search?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "audit",
+                "search"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Changes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/changes?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "changes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Compliance > Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/compliance/export?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "compliance",
+                "export"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Connections",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/connections?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "connections"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Connections > Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/connections/test",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "connections",
+                "test"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Diagnostics > Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/diagnostics/run?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "diagnostics",
+                "run"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Discovery",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/discovery?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "discovery"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Dlp > Scan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/dlp/scan",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "dlp",
+                "scan"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Dlp > Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/dlp/stats?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "dlp",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Events > Recent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/events/recent?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "events",
+                "recent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Events > Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/events/stats?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "events",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Firewall > Evaluate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/firewall/evaluate",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "firewall",
+                "evaluate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Firewall > Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/firewall/status?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "firewall",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/health",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Health > Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/health/summary",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "health",
+                "summary"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Identity > Graph",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/identity/graph?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "identity",
+                "graph"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Invoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/invoke",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "invoke"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Kill Switch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/kill-switch?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "kill-switch"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Marketplace",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/marketplace?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "marketplace"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/metrics?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "metrics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/notifications?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Oauth > Initiate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/oauth/initiate",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "oauth",
+                "initiate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Oauth > Providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/oauth/providers",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "oauth",
+                "providers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Onboarding",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/onboarding?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "onboarding"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Openapi.Json",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/openapi.json?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "openapi.json"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Playground",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/playground?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "playground"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Regions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/regions?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "regions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Sanitize > Input",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/sanitize/input?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "sanitize",
+                "input"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Sanitize > Output",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/sanitize/output?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "sanitize",
+                "output"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/stats?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/status?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Stream > Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/stream/stats?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "stream",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Supply Chain",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/supply-chain?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "supply-chain"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Table Allowlist",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/table-allowlist?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "table-allowlist"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Tokens",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/tokens?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "tokens"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mcp > Tools > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/mcp/tools/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "tools"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoring",
+      "item": [
+        {
+          "name": "Monitoring > Services",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/monitoring/services?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monitoring",
+                "services"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notifications > Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/count?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "count"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notifications > Read All",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/read-all?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "read-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Oauth",
+      "item": [
+        {
+          "name": "Oauth > Credential Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/credential-health",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "credential-health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Oauth > Credentials",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/credentials",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "credentials"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Oauth > Revoke",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/revoke",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "revoke"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Oauth > Rotation Policies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/rotation-policies",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "rotation-policies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Oauth > Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/token",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Oauth > Validate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/oauth/validate",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "oauth",
+                "validate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Onboarding",
+      "item": [
+        {
+          "name": "Onboarding > Complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/onboarding/complete",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "onboarding",
+                "complete"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Onboarding > Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/onboarding/status?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "onboarding",
+                "status"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Policies",
+      "item": [
+        {
+          "name": "Policies > Conditional Access",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policies/conditional-access?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policies",
+                "conditional-access"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policies > Conditional Access > Evaluate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policies/conditional-access/evaluate",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policies",
+                "conditional-access",
+                "evaluate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Policy",
+      "item": [
+        {
+          "name": "Policy > Content",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/content?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "content"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Content > Promote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/content/promote",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "content",
+                "promote"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Content > Rollback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/content/rollback",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "content",
+                "rollback"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Content > Save",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/content/save",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "content",
+                "save"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Diff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/diff?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "diff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Download",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/download?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "download"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Guardrails",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/guardrails?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "guardrails"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Guardrails > Parse",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/guardrails/parse?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "guardrails",
+                "parse"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Guardrails > Simulate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/guardrails/simulate?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "guardrails",
+                "simulate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/upload",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "upload"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Policy > Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/policy/versions",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "versions"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quotas",
+      "item": [
+        {
+          "name": "Quotas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/quotas?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "quotas"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Report",
+      "item": [
+        {
+          "name": "Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/report?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "report"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Risk",
+      "item": [
+        {
+          "name": "Risk > Agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/risk/agents?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "risk",
+                "agents"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Risk > Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/risk/dashboard?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "risk",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Risk > Detections",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/risk/detections?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "risk",
+                "detections"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/settings?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sponsors",
+      "item": [
+        {
+          "name": "Sponsors > My Agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sponsors/my-agents?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "sponsors",
+                "my-agents"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "System > Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/system/info",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "info"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ticketing",
+      "item": [
+        {
+          "name": "Ticketing > Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ticketing/config?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ticketing",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ticketing > Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ticketing/create",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ticketing",
+                "create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ticketing > Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ticketing/test",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ticketing",
+                "test"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ticketing > Webhook > Jira",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ticketing/webhook/jira?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ticketing",
+                "webhook",
+                "jira"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tools",
+      "item": [
+        {
+          "name": "Tools",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/tools?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tools"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tools > Bulk Delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/tools/bulk-delete",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tools",
+                "bulk-delete"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tools > Bulk Quarantine",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/tools/bulk-quarantine",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tools",
+                "bulk-quarantine"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tools > Seed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/tools/seed",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tools",
+                "seed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Verify",
+      "item": [
+        {
+          "name": "Verify > ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/verify/?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "verify"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Version",
+      "item": [
+        {
+          "name": "Version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/version",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "version"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workflows",
+      "item": [
+        {
+          "name": "Workflows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/workflows?tenant_id={{tenant_id}}",
+              "protocol": "https",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "workflows"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

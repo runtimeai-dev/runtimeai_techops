@@ -1,0 +1,105 @@
+# Helm values override for rt01 verification pod
+# Usage: helm install runtimeai ./helm/runtimeai -n rt01 -f values.yaml -f rt01_values.yaml
+
+global:
+  namespace: rt01
+  domain: rt01.runtimeai.io
+  registry: runtimeaicr.azurecr.io
+  imageTag: "20260328-2147"
+  storageClass: managed-csi
+  imagePullSecret: ""  # Using managed identity (AcrPull role on SP)
+
+# Verification sizing: 1 replica per service (not HA, saves cost)
+controlPlane:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+dashboard:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgresql:
+  enabled: true
+  persistence:
+    size: 20Gi
+    storageClass: managed-csi
+  env:
+    PGDATA: /var/lib/postgresql/data/pgdata  # Azure PVC requires subdirectory
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+redis:
+  enabled: true
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Secret references (must exist before helm install)
+secrets:
+  dbSecret: rt01-db-secret
+  appSecret: rt01-app-secrets
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  tls:
+    enabled: true
+    mode: letsencrypt  # or self-signed for local testing
+  hosts:
+    api: api.rt01.runtimeai.io
+    app: app.rt01.runtimeai.io
+    esign: esign.rt01.runtimeai.io
+    auditor: auditor.rt01.runtimeai.io
+    saas: saas.rt01.runtimeai.io
+    marketplace: marketplace.rt01.runtimeai.io
+    finops: finops.rt01.runtimeai.io
+
+# Storage backend for eSign documents
+storage:
+  backend: local  # or "azure" for Azure Blob Storage
+  local:
+    size: 10Gi
+
+# Email (disabled for verification -- no SendGrid needed)
+email:
+  provider: none
+
+# Vault (use K8s secrets for verification)
+vault:
+  provider: env
+
+# LLM Router target (optional -- for NL-to-Rego and AI features)
+llmRouter:
+  target: ""  # Set to http://ollama:11434 or https://api.openai.com if available
+
+# OTEL disabled (no collector in verification)
+otel:
+  disabled: true

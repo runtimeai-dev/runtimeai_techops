@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contract-manager
+  namespace: aep
+  labels:
+    app: contract-manager
+    app.kubernetes.io/part-of: runtimeai-aep
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: contract-manager
+  template:
+    metadata:
+      labels:
+        app: contract-manager
+    spec:
+      containers:
+        - name: contract-manager
+          image: runtimeaicr.azurecr.io/aep/contract-manager:latest
+          ports:
+            - containerPort: 8312
+          envFrom:
+            - configMapRef:
+                name: aep-config
+            - secretRef:
+                name: aep-secrets
+          env:
+            - name: PORT
+              value: "8312"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8312
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8312
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: acr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: contract-manager
+  namespace: aep
+spec:
+  selector:
+    app: contract-manager
+  ports:
+    - port: 8312
+      targetPort: 8312
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: contract-manager-pdb
+  namespace: aep
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: contract-manager

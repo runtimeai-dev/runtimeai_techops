@@ -1,0 +1,12 @@
+partner: { cloud: aws }
+ingress:
+  className: alb         # AWS ALB
+  tlsClusterIssuer: letsencrypt-prod
+controlPlane:
+  storageClass: gp3
+mcpGateway:
+  storageClass: gp3
+externalServices:
+  postgres: { enabled: true }   # RDS via DATABASE_URL secret
+  redis:    { enabled: true }   # ElastiCache via REDIS_URL secret
+  blob:     { enabled: true }   # S3 bucket
