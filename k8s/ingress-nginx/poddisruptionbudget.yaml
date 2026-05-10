@@ -1,0 +1,35 @@
+# PodDisruptionBudget for the cluster ingress controller.
+#
+# Why this matters (RCRM-033 incident, 2026-05-10):
+#   The ingress-nginx-controller was running 1 replica. When AKS observed
+#   the LB backend as unhealthy (Microsoft.ResourceHealth event 16:21 UTC)
+#   and we needed to bounce the pod to refresh its LB registration, there
+#   was a brief window where ALL external traffic to the cluster was
+#   dropped — app.runtimecrm.com, www.runtimeai.io, trial.runtimeai.io,
+#   admin.runtimeai.io, app.rt19.runtimeai.io. Customer-blocking.
+#
+# What this PDB guarantees:
+#   AKS node maintenance / drains / VMSS upgrades may not voluntarily
+#   evict both ingress pods at the same time. At least one always remains
+#   to terminate external traffic.
+#
+# Pair with:
+#   - replicas: 2 in the helm release (values.yaml in this dir).
+#   - hard anti-affinity by hostname so the two replicas can't co-locate.
+#   - external synthetic probe alerting on TCP timeout (see README).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/component: controller
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/instance: ingress-nginx
+      app.kubernetes.io/component: controller

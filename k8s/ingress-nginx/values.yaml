@@ -1,0 +1,71 @@
+# Helm values for ingress-nginx — captures the production-resilient
+# configuration mandated after the 2026-05-10 outage (RCRM-033 incident).
+#
+# This file is NOT auto-applied. To enforce on the cluster:
+#
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+#     -n ingress-nginx --create-namespace \
+#     -f k8s/ingress-nginx/values.yaml
+#
+# Until then, the PDB in poddisruptionbudget.yaml + the imperative
+# `kubectl scale --replicas=2` of 2026-05-10 are protecting the cluster.
+# When this file is helm-applied, the imperative changes get baked in.
+
+controller:
+  # Floor 2 replicas — guarantees one survives any single-pod event
+  # (LB registration drift, node drain, helm upgrade rolling restart).
+  replicaCount: 2
+
+  # Hard anti-affinity by hostname. Without `requiredDuringScheduling`
+  # the helm default is `preferred`, which the scheduler is allowed to
+  # ignore — and did, during the 2026-05-10 recovery (saw both replicas
+  # on the same VMSS nodepool briefly).
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+              app.kubernetes.io/instance: ingress-nginx
+              app.kubernetes.io/component: controller
+          topologyKey: kubernetes.io/hostname
+
+  # PDB is set as a separate manifest (poddisruptionbudget.yaml) rather
+  # than via controller.podDisruptionBudget here so it's visible to
+  # auditing without parsing the helm release.
+  podDisruptionBudget:
+    enabled: false
+
+  # Resource floors — current pod was OOMing under load surge during
+  # the incident timeline (300m request, 90Mi limit was original).
+  # Bump to give headroom for spike traffic.
+  resources:
+    requests:
+      cpu: 300m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+  # Keep startup faster than default — 60s is too long for a layer-7
+  # gateway. The pod is stateless; better to fail fast and let the LB
+  # health probe rotate to a healthy replica.
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  service:
+    # externalTrafficPolicy: Cluster is the default. We deliberately do
+    # NOT use Local here because Local requires a healthy pod on every
+    # node receiving traffic, which makes failures more not less likely
+    # when one pod is gone.
+    externalTrafficPolicy: Cluster
