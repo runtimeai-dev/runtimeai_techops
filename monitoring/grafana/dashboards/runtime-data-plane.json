@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "RuntimeAI Data Plane Metrics",
+    "tags": ["data-plane", "services", "performance"],
+    "panels": [
+      {
+        "title": "Data Plane Service Health",
+        "targets": [
+          {
+            "expr": "count(up{job=\"data-plane\"} == 1) by (service)",
+            "legendFormat": "{{ service }} Up"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Cost Ledger Latency (p99)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, rate(cost_ledger_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99 latency"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Drift Engine Detection Rate",
+        "targets": [
+          {
+            "expr": "rate(drift_engine_detections_total[5m])",
+            "legendFormat": "detections/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "WAF Block Rate",
+        "targets": [
+          {
+            "expr": "rate(waf_requests_blocked_total[5m])",
+            "legendFormat": "blocks/sec"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

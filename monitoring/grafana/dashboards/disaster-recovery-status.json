@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Disaster Recovery Status",
+    "tags": ["disaster-recovery", "backup", "failover", "rto-rpo"],
+    "panels": [
+      {
+        "title": "Last Backup Timestamp",
+        "targets": [
+          {
+            "expr": "backup_last_successful_time",
+            "legendFormat": "{{ database }} last backup"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Backup Size Trend",
+        "targets": [
+          {
+            "expr": "backup_size_bytes / 1024^3",
+            "legendFormat": "{{ database }} (GB)"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Failover Readiness",
+        "targets": [
+          {
+            "expr": "failover_replica_lag_seconds < 300",
+            "legendFormat": "{{ replica }} ready"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "RTO/RPO Compliance",
+        "targets": [
+          {
+            "expr": "backup_recovery_time_seconds",
+            "legendFormat": "{{ database }} RTO"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

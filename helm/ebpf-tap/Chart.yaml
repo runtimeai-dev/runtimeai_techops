@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ebpf-tap
+description: eBPF TAP Agent DaemonSet - Kernel-Level Network Traffic Analysis
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: RuntimeAI TechOps
+    email: techops@runtimeai.io

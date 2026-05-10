@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Service Health Status",
+    "tags": ["services", "health", "uptime"],
+    "panels": [
+      {
+        "title": "Service Uptime %",
+        "targets": [
+          {
+            "expr": "100 * (1 - (rate(service_downtime_total[24h]) / 24 / 3600))",
+            "legendFormat": "{{ service_name }}"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Liveness Probe Failures",
+        "targets": [
+          {
+            "expr": "rate(prober_probe_total{probe_type=\"liveness\",result=\"failure\"}[5m])",
+            "legendFormat": "{{ pod_name }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Readiness Probe Failures",
+        "targets": [
+          {
+            "expr": "rate(prober_probe_total{probe_type=\"readiness\",result=\"failure\"}[5m])",
+            "legendFormat": "{{ pod_name }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Service Dependencies Health",
+        "targets": [
+          {
+            "expr": "up{job=~\"control-plane|drift-engine|cost-ledger|waf|mcp-gateway\"}",
+            "legendFormat": "{{ job }}"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

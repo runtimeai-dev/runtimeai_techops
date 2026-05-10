@@ -1,0 +1,14 @@
+apiVersion: v2
+name: authzion
+description: Authzion - OPA + Envoy Sidecar Injection for Fine-Grained Access Control
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - authzion
+  - opa
+  - envoy
+  - access-control
+maintainers:
+  - name: RuntimeAI TechOps
+    email: techops@runtimeai.io

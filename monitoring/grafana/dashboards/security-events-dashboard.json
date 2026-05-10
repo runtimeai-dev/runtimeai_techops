@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Security Events",
+    "tags": ["security", "events", "audit", "incidents"],
+    "panels": [
+      {
+        "title": "Failed Authentication Attempts",
+        "targets": [
+          {
+            "expr": "sum(rate(auth_failures_total[5m])) by (reason)",
+            "legendFormat": "{{ reason }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Unauthorized Access Attempts",
+        "targets": [
+          {
+            "expr": "rate(rbac_violations_total[5m])",
+            "legendFormat": "RBAC violations/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Suspicious Activity Events",
+        "targets": [
+          {
+            "expr": "count(security_events{severity=\"high\"} == 1)",
+            "legendFormat": "High severity events"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Compliance Violations",
+        "targets": [
+          {
+            "expr": "compliance_violations_total",
+            "legendFormat": "{{ violation_type }}"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

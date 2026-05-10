@@ -1,0 +1,304 @@
+# Alert Rules — TOPS-026, TOPS-035, TOPS-036
+# Critical, Warning, and Info alerts across Kubernetes, services, databases
+
+groups:
+  - name: kubernetes_alerts
+    interval: 30s
+    rules:
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod_name }} crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod_name }} has restarted {{ $value }} times in 15m"
+
+      - alert: NodeMemoryPressure
+        expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.node }} under memory pressure"
+          description: "Node is experiencing memory pressure; pods may be evicted"
+
+      - alert: NodeDiskPressure
+        expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.node }} disk full"
+          description: "Node disk usage critical; immediate cleanup required"
+
+      - alert: PersistentVolumeUsageHigh
+        expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} usage > 85%"
+          description: "PVC is {{ $value | humanizePercentage }} full"
+
+      - alert: KubeDeploymentReplicasMismatch
+        expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+        for: 10m
+        labels:
+          severity: high
+          team: platform
+        annotations:
+          summary: "Deployment {{ $labels.deployment }} replicas mismatch"
+          description: "Expected {{ $value }} replicas, only available replicas differ"
+
+  - name: service_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"control-plane|cost-ledger|drift-engine|waf|mcp-gateway"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} in {{ $labels.instance }} has not responded for 2 minutes"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: high
+          team: platform
+        annotations:
+          summary: "High error rate in {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High p99 latency in {{ $labels.job }}"
+          description: "P99 latency is {{ $value }}s (threshold: 500ms)"
+
+      - alert: RateLimitExceeded
+        expr: rate(rate_limit_exceeded_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: high
+          team: platform
+        annotations:
+          summary: "Rate limit exceeded for {{ $labels.tenant_id }}"
+          description: "{{ $value }} rate limit violations in {{ $labels.job }} (last 5m)"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL exporter cannot reach database"
+
+      - alert: PostgreSQLConnections
+        expr: pg_stat_activity_count > 95
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "PostgreSQL connection pool near capacity"
+          description: "Active connections: {{ $value }} (max: 100)"
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_slow_queries_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "PostgreSQL slow query rate elevated"
+          description: "{{ $value }} slow queries/sec (threshold: 5/sec)"
+
+      - alert: PostgreSQLTableBloat
+        expr: pg_table_bloat_ratio > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "PostgreSQL table {{ $labels.table_name }} bloat > 50%"
+          description: "Table bloat ratio: {{ $value | humanizePercentage }}; consider VACUUM"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis exporter cannot reach Redis instance"
+
+      - alert: RedisMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: high
+          team: platform
+        annotations:
+          summary: "Redis memory usage > 90%"
+          description: "Memory: {{ $value | humanizePercentage }} (max: {{ $labels.max_memory }})"
+
+  - name: quantumvault_alerts
+    interval: 30s
+    rules:
+      - alert: QuantumVaultDown
+        expr: up{job="quantumvault"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "QuantumVault service is down"
+          description: "QuantumVault metrics endpoint not responding"
+
+      - alert: QuantumVaultKeyRotationFailed
+        expr: qv_key_rotation_failures_total > 0
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "QuantumVault key rotation failure"
+          description: "Key rotation failed for tenant {{ $labels.tenant_id }}"
+
+      - alert: QuantumVaultEncryptionError
+        expr: rate(qv_encryption_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "QuantumVault encryption errors detected"
+          description: "Encryption error rate: {{ $value }}/sec"
+
+      - alert: QuantumVaultAuditLogBacklog
+        expr: qv_audit_log_queue_size > 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "QuantumVault audit log queue backlog"
+          description: "Queue size: {{ $value }} events (processing may be delayed)"
+
+  - name: security_alerts
+    interval: 30s
+    rules:
+      - alert: UnauthorizedAPIAccess
+        expr: rate(http_requests_total{status="401"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "High rate of unauthorized API access"
+          description: "{{ $value }} unauthorized requests/sec (threshold: 10/sec)"
+
+      - alert: WAFRuleTriggered
+        expr: rate(waf_rule_triggered_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "WAF rule triggered frequently"
+          description: "Rule {{ $labels.rule_id }} triggered {{ $value }} times/sec"
+
+      - alert: RLSPolicyViolation
+        expr: rate(rls_policy_violation_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "RLS policy violation detected"
+          description: "Tenant isolation breach in {{ $labels.table_name }}"
+
+      - alert: PrivilegeEscalation
+        expr: rate(rbac_privilege_escalation_attempts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "RBAC privilege escalation attempt"
+          description: "User {{ $labels.user_id }} attempted privilege escalation"
+
+  - name: ddos_alerts
+    interval: 15s
+    rules:
+      - alert: DDoSDetected
+        expr: rate(http_requests_total[1m]) > 10000
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Potential DDoS attack detected"
+          description: "Request rate: {{ $value }}/sec (threshold: 10000/sec)"
+
+      - alert: AnomalousTrafficPattern
+        expr: rate(http_requests_total[5m]) > (avg_over_time(rate(http_requests_total[5m])[1h:5m]) * 3)
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "Anomalous traffic pattern detected"
+          description: "Traffic 3x baseline; possible attack or surge"
+
+  - name: compliance_alerts
+    interval: 30s
+    rules:
+      - alert: AuditLogFailure
+        expr: rate(audit_log_write_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: compliance
+        annotations:
+          summary: "Audit log write failure"
+          description: "Unable to write audit logs; compliance violation imminent"
+
+      - alert: ConfigurationDrift
+        expr: drift_detected_total > 0
+        for: 10m
+        labels:
+          severity: high
+          team: compliance
+        annotations:
+          summary: "Configuration drift detected"
+          description: "{{ $value }} configuration drifts detected; reconcile immediately"
+
+      - alert: TLSCertificateExpiring
+        expr: (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30
+        for: 1h
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "TLS certificate expiring soon"
+          description: "Certificate {{ $labels.certificate_name }} expires in {{ $value }} days"

@@ -1,0 +1,212 @@
+# RBAC Policies — TOPS-027
+# Cluster roles and bindings for cluster-admin, namespace-admin, edit, view
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-cluster-admin
+  namespace: default
+rules:
+  # Full access to all APIs
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  - nonResourceURLs: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-cluster-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-cluster-admin
+subjects:
+  - kind: Group
+    name: "runtime-admins@runtimeai.io"
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# Namespace Admin — can modify K8s objects within namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-namespace-admin
+rules:
+  # Deployments, StatefulSets, DaemonSets
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Pods
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Services, Ingress
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # ConfigMaps, Secrets
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]  # Cannot create/edit secrets
+  
+  # PVCs
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  
+  # Helm releases (if using Helm)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+    resourceNames: ["sh.helm.release.v1.*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-namespace-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-namespace-admin
+subjects:
+  - kind: Group
+    name: "runtime-platform@runtimeai.io"
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# Edit Role — can modify deployments, but not delete
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-edit
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-edit-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-edit
+subjects:
+  - kind: Group
+    name: "runtime-editors@runtimeai.io"
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# View Role — read-only access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-view
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-view-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-view
+subjects:
+  - kind: Group
+    name: "runtime-viewers@runtimeai.io"
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# Tenant-scoped RBAC — each tenant can only view/edit their namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tenant-view
+  namespace: rt19
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-view-binding
+  namespace: rt19
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tenant-view
+subjects:
+  - kind: ServiceAccount
+    name: tenant-viewer
+    namespace: rt19
+
+---
+# Service Account for automated deployments
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runtimeai-deployer
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-deployer-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-namespace-admin
+subjects:
+  - kind: ServiceAccount
+    name: runtimeai-deployer
+    namespace: default

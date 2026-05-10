@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Redis Cache Metrics",
+    "tags": ["redis", "cache", "performance"],
+    "panels": [
+      {
+        "title": "Redis Memory Usage",
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes / 1024^3",
+            "legendFormat": "Memory (GB)"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Cache Hit Ratio",
+        "targets": [
+          {
+            "expr": "100 * redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)",
+            "legendFormat": "Hit Ratio %"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Operations per Second",
+        "targets": [
+          {
+            "expr": "rate(redis_commands_processed_total[1m])",
+            "legendFormat": "ops/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Eviction Rate",
+        "targets": [
+          {
+            "expr": "rate(redis_evicted_keys_total[5m])",
+            "legendFormat": "evictions/sec"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

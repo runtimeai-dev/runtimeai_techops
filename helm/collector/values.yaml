@@ -1,0 +1,35 @@
+# Collector DaemonSet Values
+namespace: rt19
+image: runtimeaicr.azurecr.io/collector:latest
+metrics_port: 9100
+log_endpoint: http://log-aggregator:5000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# DaemonSet tolerates all taints
+tolerations:
+  - operator: Exists
+
+# Node affinity (optional)
+nodeAffinity:
+  enabled: false
+
+# Volume mounts for log collection
+volumes:
+  - name: var-log
+    hostPath:
+      path: /var/log
+  - name: var-run
+    hostPath:
+      path: /var/run
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s

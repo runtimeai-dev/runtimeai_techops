@@ -1,0 +1,128 @@
+# RuntimeAI Data Plane Default Values
+
+# Global settings
+namespace: rt19
+environment: staging
+image_registry: runtimeaicr.azurecr.io
+
+# Cost Ledger Service
+cost_ledger:
+  enabled: true
+  replicas: 2
+  image: runtimeaicr.azurecr.io/cost-ledger:latest
+  port: 8083
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  env:
+    DATABASE_URL: "postgres://user:pass@postgres:5432/runtimeai"
+    REDIS_URL: "redis://redis:6379"
+    LOG_LEVEL: "info"
+
+# Drift Engine Service
+drift_engine:
+  enabled: true
+  replicas: 1
+  image: runtimeaicr.azurecr.io/drift-engine:latest
+  port: 8084
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  env:
+    DATABASE_URL: "postgres://user:pass@postgres:5432/runtimeai"
+    LOG_LEVEL: "info"
+
+# WAF Service
+waf:
+  enabled: true
+  replicas: 2
+  image: runtimeaicr.azurecr.io/waf:latest
+  port: 8085
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    LOG_LEVEL: "info"
+
+# Common settings
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts: []
+  tls: []
+
+# Database
+postgres:
+  host: postgres
+  port: 5432
+  username: runtimeai
+  password_secret: postgres-password
+  password_secret_key: password
+
+# Redis
+redis:
+  host: redis
+  port: 6379
+
+# QuantumVault integration
+quantumvault:
+  enabled: true
+  endpoint: http://quantumvault:8200
+  api_key_secret: quantumvault-api-key
+  api_key_secret_key: api-key
+
+# Pod Disruption Budget
+pdb:
+  enabled: false
+  minAvailable: 1
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# Node affinity
+nodeAffinity:
+  enabled: false
+  requiredDuringScheduling: []
+  preferredDuringScheduling: []
+
+# Pod affinity
+podAffinity:
+  enabled: false
+  rule: ""
+
+# Pod anti-affinity
+podAntiAffinity:
+  enabled: true
+  rule: "soft"  # soft or hard
+
+# Tolerations
+tolerations: []
+
+# Node selector
+nodeSelector: {}
+
+# Labels
+labels:
+  app.kubernetes.io/managed-by: Helm
+  app.kubernetes.io/version: "1.0.0"

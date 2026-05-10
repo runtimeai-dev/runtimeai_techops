@@ -1,0 +1,140 @@
+# Kubernetes RBAC Configuration for RuntimeAI rt19
+# Defines cluster roles and bindings for operator access
+
+---
+# Platform Admins - Full cluster access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-admin
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+- nonResourceURLs: ["*"]
+  verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-admin
+subjects:
+- kind: Group
+  name: "runtimeai-admins@runtimeai.io"
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# SRE Engineers - Elevated access (no delete)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-edit
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/logs", "pods/exec"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["services", "endpoints", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/portforward"]
+  verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-edit-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-edit
+subjects:
+- kind: Group
+  name: "runtimeai-sre@runtimeai.io"
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Developers - Read-only access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runtimeai-view
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/logs", "services", "endpoints", "configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runtimeai-view-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runtimeai-view
+subjects:
+- kind: Group
+  name: "runtimeai-developers@runtimeai.io"
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Service accounts for applications
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runtimeai-app
+  namespace: rt19
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: runtimeai-app-role
+  namespace: rt19
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: runtimeai-app-binding
+  namespace: rt19
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: runtimeai-app-role
+subjects:
+- kind: ServiceAccount
+  name: runtimeai-app
+  namespace: rt19

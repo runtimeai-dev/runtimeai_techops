@@ -1,0 +1,143 @@
+# Alertmanager Configuration — TOPS-025
+# Routes alerts to PagerDuty (critical), Slack (warning), Elasticsearch (all)
+
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue/'
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  # Critical alerts → PagerDuty + Slack
+  routes:
+    - matchers:
+        - severity: "critical"
+      receiver: 'critical-pagerduty'
+      group_wait: 0s
+      repeat_interval: 5m
+      continue: true
+
+    # High severity → Slack + Elasticsearch
+    - matchers:
+        - severity: "high"
+      receiver: 'high-slack'
+      group_wait: 5s
+      repeat_interval: 1h
+      continue: true
+
+    # Security alerts → Security team + Slack
+    - matchers:
+        - team: "security"
+      receiver: 'security-team'
+      group_wait: 0s
+      repeat_interval: 30m
+      continue: true
+
+    # Compliance alerts → Compliance team
+    - matchers:
+        - team: "compliance"
+      receiver: 'compliance-team'
+      group_wait: 5s
+      repeat_interval: 2h
+      continue: true
+
+    # Warnings → Slack only
+    - matchers:
+        - severity: "warning"
+      receiver: 'warning-slack'
+      group_wait: 30s
+      repeat_interval: 4h
+
+inhibit_rules:
+  # Silence pod alerts if node is down
+  - source_matchers:
+      - severity: "critical"
+      - alertname: "NodeMemoryPressure|NodeDiskPressure"
+    target_matchers:
+      - severity: "warning"
+      - alertname: "PodCrashLooping|HighMemoryUsage"
+    equal: ['node']
+
+  # Silence service alerts if pod is down
+  - source_matchers:
+      - alertname: "ServiceDown"
+    target_matchers:
+      - alertname: "HighErrorRate|HighLatency"
+    equal: ['job']
+
+receivers:
+  - name: 'default'
+    slack_configs:
+      - channel: '#alerts-general'
+        title: 'Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'critical-pagerduty'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        description: '{{ .GroupLabels.alertname }} on {{ .GroupLabels.cluster }}'
+        details:
+          firing: '{{ range .Alerts.Firing }}{{ .Labels.instance }} {{ end }}'
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '@here {{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+        color: 'danger'
+        send_resolved: true
+
+  - name: 'high-slack'
+    slack_configs:
+      - channel: '#alerts-platform'
+        title: 'HIGH: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+        color: 'warning'
+        send_resolved: true
+
+  - name: 'security-team'
+    slack_configs:
+      - channel: '#alerts-security'
+        title: 'SECURITY: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\nLabels: {{ .Labels }}{{ end }}'
+        color: 'danger'
+        send_resolved: true
+    email_configs:
+      - to: 'security@runtimeai.io'
+        from: 'alertmanager@runtimeai.io'
+        smarthost: 'smtp.sendgrid.net:587'
+        auth_username: 'apikey'
+        auth_password: '${SENDGRID_API_KEY}'
+        headers:
+          Subject: 'SECURITY ALERT: {{ .GroupLabels.alertname }}'
+
+  - name: 'compliance-team'
+    slack_configs:
+      - channel: '#alerts-compliance'
+        title: 'COMPLIANCE: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}{{ end }}'
+        color: 'warning'
+        send_resolved: true
+    email_configs:
+      - to: 'compliance@runtimeai.io'
+        from: 'alertmanager@runtimeai.io'
+        smarthost: 'smtp.sendgrid.net:587'
+        auth_username: 'apikey'
+        auth_password: '${SENDGRID_API_KEY}'
+        headers:
+          Subject: 'COMPLIANCE ALERT: {{ .GroupLabels.alertname }}'
+
+  - name: 'warning-slack'
+    slack_configs:
+      - channel: '#alerts-warnings'
+        title: 'WARNING: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        color: 'warning'
+        send_resolved: true

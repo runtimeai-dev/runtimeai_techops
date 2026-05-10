@@ -1,0 +1,57 @@
+{
+  "dashboard": {
+    "title": "Kubernetes Cluster Overview",
+    "tags": ["kubernetes", "cluster", "overview"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Cluster Nodes Status",
+        "targets": [
+          {
+            "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"true\"})",
+            "legendFormat": "Ready Nodes"
+          },
+          {
+            "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"false\"})",
+            "legendFormat": "Not Ready Nodes"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Pod Resource Utilization",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{pod!=\"\"}[5m])) by (namespace)",
+            "legendFormat": "{{ namespace }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Memory Usage by Namespace",
+        "targets": [
+          {
+            "expr": "sum(container_memory_usage_bytes{pod!=\"\"}) by (namespace) / 1024^3",
+            "legendFormat": "{{ namespace }} (GB)"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Network I/O",
+        "targets": [
+          {
+            "expr": "sum(rate(container_network_receive_bytes_total[5m])) by (namespace)",
+            "legendFormat": "{{ namespace }} RX"
+          },
+          {
+            "expr": "sum(rate(container_network_transmit_bytes_total[5m])) by (namespace)",
+            "legendFormat": "{{ namespace }} TX"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

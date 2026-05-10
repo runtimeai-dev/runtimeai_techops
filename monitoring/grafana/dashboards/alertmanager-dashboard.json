@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "Alertmanager Status",
+    "tags": ["alertmanager", "alerts", "incidents"],
+    "panels": [
+      {
+        "title": "Active Alerts by Severity",
+        "targets": [
+          {
+            "expr": "count(ALERTS{alertstate=\"firing\"}) by (severity)",
+            "legendFormat": "{{ severity }}"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "Alert Firing Timeline",
+        "targets": [
+          {
+            "expr": "count(ALERTS{alertstate=\"firing\"}) by (alertname)",
+            "legendFormat": "{{ alertname }}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Notification Delivery Rate",
+        "targets": [
+          {
+            "expr": "rate(alertmanager_notifications_total[5m])",
+            "legendFormat": "{{ integration }} notifications/sec"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Alert Silence Duration",
+        "targets": [
+          {
+            "expr": "alertmanager_silences_active",
+            "legendFormat": "Active silences"
+          }
+        ],
+        "type": "stat"
+      }
+    ]
+  }
+}

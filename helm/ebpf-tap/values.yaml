@@ -1,0 +1,47 @@
+# eBPF TAP DaemonSet Values
+namespace: rt19
+image: runtimeaicr.azurecr.io/ebpf-tap:latest
+metrics_port: 8090
+capture_interface: eth0  # or all
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Security context (requires privileged)
+securityContext:
+  privileged: true
+  capabilities:
+    add:
+      - NET_ADMIN
+      - SYS_RESOURCE
+
+# Host network access required for packet capture
+hostNetwork: true
+
+# Tolerations for all taints
+tolerations:
+  - operator: Exists
+
+# Volume mounts
+volumes:
+  - name: proc
+    hostPath:
+      path: /proc
+      type: Directory
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  port: 8090
+
+# Node affinity (can exclude nodes without eBPF support)
+nodeAffinity:
+  enabled: false
+  label: ebpf-capable
+  value: "true"

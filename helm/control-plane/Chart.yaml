@@ -1,0 +1,14 @@
+apiVersion: v2
+name: control-plane
+description: RuntimeAI Control Plane Helm Chart (Platform, Dashboard, API)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - runtimeai
+  - control-plane
+  - dashboard
+  - api
+maintainers:
+  - name: RuntimeAI TechOps
+    email: techops@runtimeai.io

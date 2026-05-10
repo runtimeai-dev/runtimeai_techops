@@ -1,0 +1,142 @@
+# Prometheus Alert Rules for RuntimeAI rt19
+
+groups:
+  - name: kubernetes_alerts
+    interval: 30s
+    rules:
+      # Node alerts
+      - alert: NodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.node }} is not ready"
+
+      - alert: HighNodeCPUUsage
+        expr: (1 - avg by (node) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on node {{ $labels.node }}"
+
+      - alert: HighNodeMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on node {{ $labels.node }}"
+
+      - alert: DiskSpaceRunningOut
+        expr: (node_filesystem_avail_bytes{fstype!=""} / node_filesystem_size_bytes) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk {{ $labels.device }} running out of space"
+
+  - name: pod_alerts
+    interval: 30s
+    rules:
+      # Pod crash loop
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
+
+      - alert: PodNotHealthy
+        expr: min by (pod, namespace) (kube_pod_status_phase{phase=~"Pending|Unknown|Failed"}) == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is not healthy"
+
+  - name: service_alerts
+    interval: 30s
+    rules:
+      # Service availability
+      - alert: ServiceDown
+        expr: up{job=~"runtimeai-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate (> 5%) in {{ $labels.job }}"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 latency (> 1s) in {{ $labels.job }}"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # PostgreSQL alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+
+      - alert: PostgreSQLTooManyConnections
+        expr: postgresql_pg_stat_activity_count / postgresql_pg_database_server_version > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connection pool near capacity"
+
+      # Redis alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage > 85%"
+
+  - name: quantumvault_alerts
+    interval: 60s
+    rules:
+      - alert: QuantumVaultDown
+        expr: up{job="quantumvault"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "QuantumVault is unreachable"
+
+      - alert: HighSecretAccessLatency
+        expr: rate(quantumvault_secret_access_duration_seconds_sum[5m]) / rate(quantumvault_secret_access_duration_seconds_count[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QuantumVault secret access latency > 500ms"

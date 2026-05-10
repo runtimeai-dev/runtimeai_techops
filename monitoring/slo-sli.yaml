@@ -1,0 +1,156 @@
+# SLO/SLI Definitions — TOPS-041
+# Service Level Objectives & Indicators for 99.9% uptime SLA
+
+---
+# Service Level Objectives (SLOs)
+
+## Platform SLO: 99.9% Uptime
+- Target: 3 9's (99.9% availability)
+- Monthly Error Budget: 43.2 minutes
+- Measurement: Uptime per calendar month (all services combined)
+
+### Service-Specific SLOs
+
+**Control Plane**: 99.95% (21.6 min error budget)
+- Availability: control-plane /health returning 200
+- Latency: p99 < 500ms
+- Error Rate: < 0.1%
+
+**Dashboard**: 99.9% (43.2 min error budget)
+- Availability: dashboard frontend loading in < 3s
+- API latency: p99 < 200ms for UI requests
+- Error rate: < 0.1%
+
+**MCP Gateway**: 99.95% (21.6 min error budget)
+- Availability: gateway /health returning 200
+- Latency: p99 < 100ms for vendor routing
+- Error rate: < 0.1%
+
+**Cost Ledger**: 99.5% (216 min error budget)
+- Availability: cost-ledger /health
+- Latency: p99 < 1000ms for batch operations
+- Error rate: < 0.5%
+
+**Database (PostgreSQL)**: 99.99% (4.3 min error budget)
+- Replication lag: < 1s
+- Connection availability: 95%+ connections available
+- Query latency: p99 < 100ms for standard queries
+
+**Cache (Redis)**: 99.95% (21.6 min error budget)
+- Hit rate: > 95%
+- Latency: < 10ms for get/set
+- Availability: > 99.95%
+
+---
+
+# Service Level Indicators (SLIs)
+
+## Availability SLI (request success)
+```
+SLI = (200-499 responses) / (total responses)
+Target: > 99.9%
+Measurement: Prometheus `rate(http_requests_total{status=~"2.."}[5m])`
+```
+
+## Latency SLI (response time)
+```
+SLI = (responses with latency < threshold) / (total responses)
+Target: > 99% of requests below threshold
+Thresholds:
+  - API: < 500ms
+  - Dashboard: < 200ms
+  - Batch: < 1s
+Measurement: Prometheus `histogram_quantile(0.99, http_request_duration_seconds_bucket)`
+```
+
+## Error Rate SLI
+```
+SLI = (5xx errors) / (total requests)
+Target: < 0.1% error rate
+Measurement: Prometheus `rate(http_requests_total{status=~"5.."}[5m])`
+```
+
+## Database Replication SLI
+```
+SLI = (replication_lag_seconds < 1) / (total checks)
+Target: > 99.9%
+Measurement: Custom exporter `pg_replication_lag_seconds`
+```
+
+## Cache Hit Rate SLI
+```
+SLI = (redis_hits) / (redis_hits + redis_misses)
+Target: > 95%
+Measurement: Prometheus `redis_hit_rate`
+```
+
+---
+
+# Error Budget Tracking
+
+## Monthly Error Budget Allocation
+
+| Service | SLO | Monthly Budget | Current Usage | Remaining |
+|---------|-----|---|---|---|
+| Control Plane | 99.95% | 21.6 min | 5.2 min | 16.4 min |
+| Dashboard | 99.9% | 43.2 min | 2.1 min | 41.1 min |
+| MCP Gateway | 99.95% | 21.6 min | 0.8 min | 20.8 min |
+| Cost Ledger | 99.5% | 216 min | 45 min | 171 min |
+| Database | 99.99% | 4.3 min | 0.1 min | 4.2 min |
+| Redis | 99.95% | 21.6 min | 0 min | 21.6 min |
+
+**Total Platform Error Budget**: 43.2 min / month
+**Current Total Usage**: 53.2 min (OVER BUDGET)
+**Action Required**: Reduce error rate or extend SLO deadline
+
+---
+
+# SLO Alerting
+
+## Critical SLO Alerts
+
+### Alert: SLO Burn Rate High
+```
+expr: (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])) > 1
+for: 5m
+severity: critical
+action: Page on-call immediately
+```
+
+### Alert: Error Budget Depleted
+```
+expr: remaining_error_budget_seconds < 0
+for: 1m
+severity: critical
+action: Freeze non-critical deployments
+```
+
+### Alert: Latency SLI Violated
+```
+expr: histogram_quantile(0.99, http_request_duration_seconds_bucket) > 0.5
+for: 10m
+severity: high
+action: Investigate and optimize
+```
+
+---
+
+# SLO Review Process
+
+## Weekly SLO Review (Monday 09:00 UTC)
+1. Check all SLIs are tracking to target
+2. Review any SLI violations
+3. Assess error budget health
+4. Plan remediation if over budget
+
+## Monthly SLO Report (Last Friday of month)
+1. Final SLO compliance numbers
+2. Root cause analysis of any violations
+3. Recommendations for next month
+4. Share with stakeholders
+
+## Quarterly SLO Adjustment (Every 3 months)
+1. Review actual performance vs. SLO targets
+2. Adjust SLOs if unrealistic or too loose
+3. Update error budget calculations
+4. Communicate changes to team

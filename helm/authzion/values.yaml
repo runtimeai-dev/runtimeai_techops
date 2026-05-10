@@ -1,0 +1,31 @@
+namespace: rt19
+opa:
+  replicas: 2
+  image: openpolicyagent/opa:latest
+  port: 8181
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+envoy:
+  image: envoyproxy/envoy:v1.27-latest
+  port: 10000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# OPA Policy update interval (seconds)
+policy_update_interval: 60
+
+# Sidecar injection
+sidecar_injection:
+  enabled: true
+  namespace_selector: "authzion.io/enable-injection=true"

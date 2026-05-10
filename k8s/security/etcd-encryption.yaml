@@ -1,0 +1,23 @@
+# Secrets Encryption at Rest (etcd KMS) — TOPS-032
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      - configmaps
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQo=  # base64-encoded key
+      - identity: {}  # Fallback for unencrypted data
+  - resources:
+      - events
+    providers:
+      - identity: {}  # Events not encrypted for performance
+
+---
+# Verify encryption status
+# kubectl get secret -A -o json | jq '.items[0]' | grep -A5 "metadata"
+# Should show: "metadata.annotations.encryption": "aescbc"

@@ -1,0 +1,283 @@
+# Audit Logging — TOPS-037
+# Kubernetes API audit logs + application audit logging to Elasticsearch
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  # Log all requests at RequestResponse level
+  - level: RequestResponse
+    omitStages:
+      - RequestReceived
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps", "pods"]
+    namespaces: ["rt19", "runtimeai-landing", "pqdata"]
+
+  # Log pod exec commands (high risk)
+  - level: RequestResponse
+    verbs: ["exec", "attach", "connect"]
+    omitStages:
+      - RequestReceived
+
+  # Log all RBAC changes
+  - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+
+  # Log namespace deletions (high impact)
+  - level: RequestResponse
+    verbs: ["delete"]
+    resources:
+      - group: ""
+        resources: ["namespaces"]
+
+  # Log service account token requests
+  - level: RequestResponse
+    verbs: ["create", "delete"]
+    resources:
+      - group: ""
+        resources: ["serviceaccounts/token"]
+
+  # Log all authentication/authorization denials
+  - level: Failure
+    verbs: ["*"]
+    omitStages:
+      - RequestReceived
+
+  # Log all other requests at Metadata level
+  - level: Metadata
+    omitStages:
+      - RequestReceived
+
+---
+# Audit Logging Configuration (in /etc/kubernetes/audit-policy.yaml on control plane)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-policy
+  namespace: kube-system
+data:
+  audit-policy.yaml: |
+    # Same as above YAML policy
+
+---
+# Elasticsearch backend for audit logs
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-webhook-config
+  namespace: kube-system
+data:
+  audit-webhook.yaml: |
+    apiVersion: audit.k8s.io/v1
+    kind: EventList
+    items:
+      - apiVersion: audit.k8s.io/v1
+        kind: Event
+        level: RequestResponse
+        timestamp: 2026-05-08T10:00:00Z
+        user:
+          username: system:admin
+          groups: ["system:masters"]
+        sourceIPAddress: "10.0.0.1"
+        userAgent: "kubectl/v1.28.0"
+        verb: "create"
+        apiVersion: "v1"
+        kind: "Pod"
+        name: "nginx-test"
+        namespace: "rt19"
+        requestObject:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: nginx-test
+        responseStatus:
+          code: 201
+          message: "Created"
+
+---
+# Application-level audit logging (in Go services)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-logging-config
+  namespace: rt19
+data:
+  audit-config.yaml: |
+    # Audit logging configuration for Go services
+    
+    audit:
+      enabled: true
+      elasticsearch:
+        enabled: true
+        host: elasticsearch.default.svc.cluster.local
+        port: 9200
+        index: audit-logs-%{+yyyy.MM.dd}
+        
+      syslog:
+        enabled: true
+        address: syslog.default.svc.cluster.local:514
+        facility: 16  # local0
+        priority: 6   # info
+        
+      file:
+        enabled: false  # Use Elasticsearch instead
+        path: /var/log/audit.log
+        maxSize: 100MB
+        maxAge: 30
+        maxBackups: 10
+        compress: true
+        
+    # Events to audit
+    events:
+      user_login: true
+      user_logout: true
+      api_call: true
+      data_modification: true
+      permission_change: true
+      secret_access: true
+      secret_rotation: true
+      configuration_change: true
+      authentication_failure: true
+      authorization_failure: true
+      
+    # PII redaction
+    redact:
+      patterns:
+        - "password"
+        - "api_key"
+        - "secret"
+        - "token"
+        - "credit_card"
+      
+    # Retention policy
+    retention:
+      default_days: 30
+      error_logs_days: 60
+      security_logs_days: 90
+      
+---
+# Fluent-bit config to ship container logs to Elasticsearch
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Daemon Off
+        Flush 1
+        Log_Level info
+        Parsers_File parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*rt19*.log
+        Parser docker
+        Tag kube.*
+        Refresh_Interval 5
+
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Kube_URL https://kubernetes.default.svc:443
+        Kube_CA_File /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host elasticsearch.default
+        Port 9200
+        Index audit-logs-%Y.%m.%d
+        Type _doc
+        Logstash_Format true
+        Logstash_Prefix audit
+        Retry_Limit 3
+
+---
+# Index template for Elasticsearch (30-day retention)
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: es-index-template
+  namespace: logging
+data:
+  template.json: |
+    {
+      "template": "audit-logs-*",
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "index.lifecycle.name": "audit-logs-policy",
+        "index.lifecycle.rollover_alias": "audit-logs",
+        "index.refresh_interval": "30s"
+      },
+      "mappings": {
+        "properties": {
+          "@timestamp": {"type": "date"},
+          "message": {"type": "text"},
+          "level": {"type": "keyword"},
+          "user": {"type": "keyword"},
+          "verb": {"type": "keyword"},
+          "object": {"type": "keyword"},
+          "namespace": {"type": "keyword"},
+          "sourceIP": {"type": "ip"},
+          "status": {"type": "keyword"}
+        }
+      }
+    }
+
+---
+# ILM (Index Lifecycle Management) policy for 30-day retention
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: es-ilm-policy
+  namespace: logging
+data:
+  ilm-policy.json: |
+    {
+      "policy": "audit-logs-policy",
+      "phases": {
+        "hot": {
+          "min_age": "0d",
+          "actions": {
+            "rollover": {"max_primary_shard_size": "50gb"},
+            "set_priority": {"priority": 100}
+          }
+        },
+        "warm": {
+          "min_age": "7d",
+          "actions": {
+            "set_priority": {"priority": 50},
+            "forcemerge": {"max_num_segments": 1}
+          }
+        },
+        "cold": {
+          "min_age": "14d",
+          "actions": {
+            "set_priority": {"priority": 0},
+            "searchable_snapshot": {"snapshot_repository": "cold-snapshot"}
+          }
+        },
+        "delete": {
+          "min_age": "30d",
+          "actions": {
+            "delete": {}
+          }
+        }
+      }
+    }
