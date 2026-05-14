@@ -9,8 +9,8 @@ BASE_URL="${BASE_URL:-https://api.rt19.runtimeai.io}"
 CONTROL_PLANE_URL="${CONTROL_PLANE_URL:-${BASE_URL/app./api.}}"
 TENANT_ID="${TENANT_ID:-felt-sense-ai}"
 
-TEST_EMAIL="qa-invite-op-$$@runtimeai.io"
-AUDITOR_EMAIL="qa-invite-aud-$$@runtimeai.io"
+TEST_EMAIL="qa-invite-op-$$@test.runtimeai.io"
+AUDITOR_EMAIL="qa-invite-aud-$$@test.runtimeai.io"
 
 PASS_COUNT=0
 FAIL_COUNT=0

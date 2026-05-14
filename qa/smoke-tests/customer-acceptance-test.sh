@@ -14,7 +14,7 @@ echo ""
 
 # Workflow 1: User Registration & Login
 log_info "Workflow 1: User Registration & Login"
-EMAIL="test-cat-$(date +%s)@runtimeai.io"
+EMAIL="test-cat-$(date +%s)@test.runtimeai.io"
 PASSWORD="TestPassword123!"
 
 # Register

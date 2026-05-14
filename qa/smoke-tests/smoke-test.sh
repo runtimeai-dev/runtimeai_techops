@@ -35,7 +35,7 @@ echo ""
 log_info "Test 2: API Authentication"
 API_TOKEN=$(curl -s -X POST "$BASE_URL/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@runtimeai.io","password":"test"}' | jq -r '.token' 2>/dev/null || echo "")
+  -d '{"email":"test@test.runtimeai.io","password":"test"}' | jq -r '.token' 2>/dev/null || echo "")
 
 if [ -n "$API_TOKEN" ] && [ "$API_TOKEN" != "null" ]; then
   log_success "Authentication successful"
