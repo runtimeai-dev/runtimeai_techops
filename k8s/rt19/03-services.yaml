@@ -232,22 +232,63 @@ spec:
                   name: rt19-email-secrets
                   key: SENDGRID_FROM_EMAIL
             - name: EMAIL_FROM_NAME
-              value: "RuntimeAI"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: EMAIL_FROM_NAME
             - name: PORT
               value: "8097"
-            # Portal redirect URLs (production — no localhost defaults)
+            # Portal redirect URLs — single source of truth: portal-urls-configmap.yaml
             - name: AUTH_SERVICE_BASE_URL
-              value: "https://api.rt19.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: AUTH_SERVICE_BASE_URL
             - name: DASHBOARD_URL
-              value: "https://app.rt19.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: DASHBOARD_URL
             - name: AUDITOR_URL
-              value: "https://auditor.rt19.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: AUDITOR_URL
             - name: MARKETPLACE_URL
-              value: "https://marketplace.rt19.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: MARKETPLACE_URL
             - name: LANDING_URL
-              value: "https://www.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: LANDING_URL
             - name: ESIGN_URL
-              value: "https://esign.rt19.runtimeai.io"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: ESIGN_URL
+            - name: RUNTIMECRM_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: RUNTIMECRM_API_URL
+            - name: RUNTIMECRM_DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: RUNTIMECRM_DASHBOARD_URL
+            - name: QUTONOMOUS_DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: QUTONOMOUS_DASHBOARD_URL
+            - name: QUTONOMOUS_COOKIE_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: QUTONOMOUS_COOKIE_DOMAIN
             # Cookie config (production)
             - name: COOKIE_DOMAIN
               value: "runtimeai.io"
@@ -259,9 +300,12 @@ spec:
                 secretKeyRef:
                   name: rt19-app-secrets
                   key: REDIS_URL  # REQ-043, REQ-104: Redis with AUTH
-            # Logo for email templates (served from runtimeai.io static site)
+            # Logo for email templates
             - name: LOGO_URL
-              value: "https://runtimeai.io/logo-v2-light-cropped.png"
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-portal-urls
+                  key: LOGO_URL
           resources:
             requests:
               cpu: 50m
