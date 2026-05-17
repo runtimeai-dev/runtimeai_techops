@@ -84,9 +84,51 @@ spec:
                 port:
                   number: 80
 ---
-# NOTE: admin.runtimeai.io is now served by saas-admin-ingress in rt19 namespace
-# (see saas-admin.yaml). The duplicate saas-admin-app in runtimeai-landing was
-# removed to prevent deployment sync issues.
+# SaaS Admin App (saas.rt19.runtimeai.io + admin.runtimeai.io)
+# IMPORTANT: ALL traffic goes to saas-admin:80. The saas-admin nginx handles:
+#   /api/         → control-plane:8080 (injects X-RuntimeAI-Admin-Secret)
+#   /api/landing-admin/ → landing-backend:8082 (injects X-API-Key)
+#   /api/crm-admin/     → arh:8315 (injects X-Admin-Secret)
+# Do NOT add a separate /api/ → control-plane path here — it bypasses the proxy
+# and breaks landing-admin and crm-admin routes (returns 404 from CP).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saas-admin-ingress
+  namespace: rt19
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: saas.rt19.runtimeai.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: saas-admin
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  - host: admin.runtimeai.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: saas-admin
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - saas.rt19.runtimeai.io
+    secretName: saas-rt19-tls
+  - hosts:
+    - admin.runtimeai.io
+    secretName: admin-runtimeai-tls
 ---
 # Enterprise Dashboard (app.rt19.runtimeai.io)
 apiVersion: networking.k8s.io/v1
