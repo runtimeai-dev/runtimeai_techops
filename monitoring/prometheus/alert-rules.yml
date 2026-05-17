@@ -302,3 +302,43 @@ groups:
         annotations:
           summary: "TLS certificate expiring soon"
           description: "Certificate {{ $labels.certificate_name }} expires in {{ $value }} days"
+
+  - name: postgres_lock_alerts
+    interval: 30s
+    rules:
+      - alert: PostgresExclusiveLockAccumulation
+        # OPER_RT19-123: leading indicator of pgbouncer tx-pool + DDL ExclusiveLock corruption.
+        # Fires ~30-60 min before full catalog lockout. WARN at 3 hits/5min, CRIT at 10.
+        # Root cause: pool_mode=transaction + DDL through pgbouncer. Fix: session pool mode.
+        expr: increase(postgres_log_messages_total{namespace="shared-data",level="WARNING",message=~".*you don't own a lock of type ExclusiveLock.*"}[5m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          namespace: shared-data
+        annotations:
+          summary: "shared-data postgres ExclusiveLock accumulation detected"
+          description: "{{ $value }} 'you don't own a lock of type ExclusiveLock' warnings in 5 min. Precedes full catalog lockout by 30-60 min. Recovery: kubectl rollout restart deployment/pgbouncer -n shared-data; if catalog queries hang, force-delete postgres-0 and/or reboot VMSS node 1."
+
+      - alert: PostgresExclusiveLockCritical
+        expr: increase(postgres_log_messages_total{namespace="shared-data",level="WARNING",message=~".*you don't own a lock of type ExclusiveLock.*"}[5m]) > 10
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+          namespace: shared-data
+        annotations:
+          summary: "CRITICAL: shared-data postgres ExclusiveLock storm — auth outage imminent"
+          description: "{{ $value }} ExclusiveLock warnings in 5 min. Immediate action: restart pgbouncer, then postgres. See runbook: docs/runbooks/shared-data-postgres-recovery.md"
+
+      - alert: PostgresCatalogQueryTimeout
+        # pg_class catalog query taking >2s means locks have accumulated. All auth magic links will fail.
+        expr: postgres_query_duration_seconds{namespace="shared-data",query="catalog_check"} > 2
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+          namespace: shared-data
+        annotations:
+          summary: "shared-data postgres catalog query timeout — magic link auth is down"
+          description: "pg_class catalog query took {{ $value }}s (threshold: 2s). auth-service magic-link INSERT will hang. Restart pgbouncer immediately, then postgres if needed."

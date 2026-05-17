@@ -1,7 +1,11 @@
-# OPER_RT19-062: PgBouncer connection pooler (×2 replicas)
-# Transaction pooling mode: max_connections=100 on postgres, DEFAULT_POOL_SIZE=25 per db,
-# MAX_CLIENT_CONN=500 — supports 2 pods × many concurrent requests without exhausting postgres.
-# All esign-service pods connect to pgbouncer:5432, never directly to postgres.
+# OPER_RT19-062 / OPER_RT19-123: PgBouncer connection pooler (×2 replicas)
+# CHANGED 2026-05-16: pool_mode switched from transaction → session (OPER_RT19-123).
+# Reason: transaction pool + DDL (migrations, LOCK TABLE) through pgbouncer orphans
+# ExclusiveLocks on pg_class → all catalog queries hang → auth magic-link INSERT
+# times out → 500 for all apps. Session mode holds a server connection per client
+# session so DISCARD ALL runs correctly on disconnect.
+# Connection budget: 10 pool_size × ~5 services = 50 max server connections (max_db_connections=50).
+# All esign-service / auth-service pods connect to pgbouncer:5432, never directly to postgres.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -18,10 +22,10 @@ data:
     listen_port = 5432
     auth_type = md5
     auth_file = /etc/pgbouncer/userlist.txt
-    pool_mode = transaction
-    default_pool_size = 25
-    max_client_conn = 500
-    max_db_connections = 100
+    pool_mode = session
+    default_pool_size = 10
+    max_client_conn = 200
+    max_db_connections = 50
     server_reset_query = DISCARD ALL
     ignore_startup_parameters = extra_float_digits
     log_connections = 0
