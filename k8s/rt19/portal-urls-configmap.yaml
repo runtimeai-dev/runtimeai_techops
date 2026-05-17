@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-portal-urls
+  namespace: rt19
+  labels:
+    app: auth-service
+    component: config
+data:
+  # RuntimeAI platform portals
+  DASHBOARD_URL: "https://app.rt19.runtimeai.io"
+  AUDITOR_URL: "https://auditor.rt19.runtimeai.io"
+  MARKETPLACE_URL: "https://marketplace.rt19.runtimeai.io"
+  LANDING_URL: "https://www.runtimeai.io"
+  AUTH_SERVICE_BASE_URL: "https://api.rt19.runtimeai.io"
+  # QuantoSign / eSign
+  ESIGN_URL: "https://esign.rt19.runtimeai.io"
+  # RuntimeCRM portals (RCRM-033 BUG-001: must be set to avoid enterprise dashboard fallback)
+  RUNTIMECRM_API_URL: "https://api.runtimecrm.com"
+  RUNTIMECRM_DASHBOARD_URL: "https://app.runtimecrm.com"
+  # Qutonomous portals (PQDP-014 §11.1 multi-product mode)
+  QUTONOMOUS_DASHBOARD_URL: "https://app.qutonomous.com"
+  QUTONOMOUS_AUDITOR_URL: ""
+  QUTONOMOUS_COOKIE_DOMAIN: ".qutonomous.com"
+  # Email branding
+  LOGO_URL: "https://runtimeai.io/logo-v2-light-cropped.png"
+  EMAIL_FROM_NAME: "RuntimeAI"
