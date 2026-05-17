@@ -71,7 +71,7 @@ fi
 
 # Test 3: Send Invitation (Magic Link Flow - Role Operator)
 echo "Test 3: Auth API - Invite user (Magic Link) as Operator"
-INVITE_EMAIL="sales-operator-test-${RANDOM}@runtimeai.io"
+INVITE_EMAIL="sales-operator-test-${RANDOM}@test.runtimeai.io"
 RES=$(auth_curl -X POST "$BASE_URL/api/auth/admin/invitations" \
   -H "Content-Type: application/json" \
   -d "{\"tenant_id\":\"$QA_TENANT_ID\",\"email\":\"$INVITE_EMAIL\",\"role\":\"operator\",\"persona\":\"enterprise\",\"products\":[\"core\"]}")
@@ -84,7 +84,7 @@ fi
 
 # Test 4: Send Invitation (Role Auditor)
 echo "Test 4: Auth API - Invite user (Magic Link) as Auditor"
-INVITE_EMAIL_AUDITOR="compliance-auditor-test-${RANDOM}@runtimeai.io"
+INVITE_EMAIL_AUDITOR="compliance-auditor-test-${RANDOM}@test.runtimeai.io"
 RES=$(auth_curl -X POST "$BASE_URL/api/auth/admin/invitations" \
   -H "Content-Type: application/json" \
   -d "{\"tenant_id\":\"$QA_TENANT_ID\",\"email\":\"$INVITE_EMAIL_AUDITOR\",\"role\":\"auditor\",\"persona\":\"auditor\",\"products\":[\"core\"]}")
